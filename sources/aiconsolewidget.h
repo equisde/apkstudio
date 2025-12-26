@@ -62,6 +62,8 @@ private:
     QPushButton *m_ClearButton;
     QComboBox *m_ModeCombo;
     QPushButton *m_DepsButton;
+    QLabel *m_TerminalTabLabel;
+    QLabel *m_TerminalPromptLabel;
     
     // Network
     QNetworkAccessManager *m_NetworkManager;

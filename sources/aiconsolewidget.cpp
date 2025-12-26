@@ -105,7 +105,8 @@ AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     : QWidget(parent), m_CurrentReply(nullptr), m_CliProcess(nullptr), 
       m_UseCliAgent(false), m_IsProcessingFileOps(false),
       m_NodeAvailable(false), m_GeminiCliAvailable(false), m_CopilotCliAvailable(false),
-      m_TerminalWidget(nullptr), m_TitleLabel(nullptr)
+      m_TerminalWidget(nullptr), m_TitleLabel(nullptr),
+      m_TerminalTabLabel(nullptr), m_TerminalPromptLabel(nullptr)
 {
     m_NetworkManager = new QNetworkAccessManager(this);
     
@@ -265,13 +266,58 @@ AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     
     m_StackedWidget->addWidget(m_AiAssistantWidget);
     
-    // ===== TERMINAL VIEW =====
+    // ===== TERMINAL VIEW - Windows Terminal Style =====
     m_TerminalWidget = new QWidget(this);
+    m_TerminalWidget->setStyleSheet("background: #0c0c0c;");
     auto termLayout = new QVBoxLayout(m_TerminalWidget);
     termLayout->setContentsMargins(0, 0, 0, 0);
     termLayout->setSpacing(0);
     
-    // Terminal output area
+    // Terminal header bar (like Windows Terminal tabs)
+    auto termHeaderBar = new QWidget(this);
+    termHeaderBar->setFixedHeight(32);
+    termHeaderBar->setStyleSheet(R"(
+        background: #1f1f1f;
+        border-bottom: 1px solid #333333;
+    )");
+    auto termHeaderLayout = new QHBoxLayout(termHeaderBar);
+    termHeaderLayout->setContentsMargins(12, 0, 12, 0);
+    
+    m_TerminalTabLabel = new QLabel(tr("PowerShell"), this);
+    m_TerminalTabLabel->setStyleSheet(R"(
+        color: #ffffff;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 12px;
+        background: #0c0c0c;
+        padding: 6px 16px;
+        border-top-left-radius: 6px;
+        border-top-right-radius: 6px;
+    )");
+    termHeaderLayout->addWidget(m_TerminalTabLabel);
+    termHeaderLayout->addStretch();
+    
+    // Terminal controls
+    auto termStopBtn = new QPushButton(tr("■"), this);
+    termStopBtn->setFixedSize(24, 24);
+    termStopBtn->setToolTip(tr("Stop CLI Agent"));
+    termStopBtn->setStyleSheet(R"(
+        QPushButton {
+            background: transparent;
+            color: #f14c4c;
+            border: none;
+            font-size: 10px;
+        }
+        QPushButton:hover { background: #333333; }
+    )");
+    connect(termStopBtn, &QPushButton::clicked, this, [this]() {
+        stopCliAgent();
+        m_ModeCombo->setCurrentIndex(0);
+    });
+    termHeaderLayout->addWidget(termStopBtn);
+    
+    termLayout->addWidget(termHeaderBar);
+    
+    // Terminal output area - Windows Terminal style
     m_TerminalOutput = new QTextEdit(this);
     m_TerminalOutput->setReadOnly(true);
     m_TerminalOutput->setFrameStyle(QFrame::NoFrame);
@@ -279,36 +325,61 @@ AIConsoleWidget::AIConsoleWidget(QWidget *parent)
         QTextEdit {
             background: #0c0c0c;
             color: #cccccc;
-            font-family: 'Cascadia Code', 'Consolas', 'JetBrains Mono', monospace;
-            font-size: 13px;
+            font-family: 'Cascadia Code', 'Cascadia Mono', 'Consolas', 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 14px;
             border: none;
-            padding: 8px;
+            padding: 12px;
+            selection-background-color: #264f78;
+            selection-color: #ffffff;
+        }
+        QScrollBar:vertical {
+            background: #0c0c0c;
+            width: 10px;
+            margin: 0;
+        }
+        QScrollBar::handle:vertical {
+            background: #5a5a5a;
+            border-radius: 5px;
+            min-height: 20px;
+        }
+        QScrollBar::handle:vertical:hover {
+            background: #787878;
+        }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            height: 0;
         }
     )");
     termLayout->addWidget(m_TerminalOutput, 1);
     
-    // Terminal input area
+    // Terminal input area - PowerShell style prompt
     auto termInputWidget = new QWidget(this);
-    termInputWidget->setStyleSheet("background: #1e1e1e; border-top: 1px solid #3c3c3c;");
+    termInputWidget->setStyleSheet("background: #0c0c0c; border-top: 1px solid #333333;");
     auto termInputLayout = new QHBoxLayout(termInputWidget);
-    termInputLayout->setContentsMargins(8, 6, 8, 6);
-    termInputLayout->setSpacing(8);
+    termInputLayout->setContentsMargins(12, 8, 12, 8);
+    termInputLayout->setSpacing(0);
     
-    auto promptLabel = new QLabel(tr("❯"), this);
-    promptLabel->setStyleSheet("color: #4ec9b0; font-size: 14px; font-weight: bold;");
-    termInputLayout->addWidget(promptLabel);
+    // PowerShell-style prompt
+    m_TerminalPromptLabel = new QLabel(tr("PS>"), this);
+    m_TerminalPromptLabel->setStyleSheet(R"(
+        color: #569cd6;
+        font-family: 'Cascadia Code', 'Consolas', monospace;
+        font-size: 14px;
+        font-weight: bold;
+        padding-right: 8px;
+    )");
+    termInputLayout->addWidget(m_TerminalPromptLabel);
     
     m_TerminalInput = new QLineEdit(this);
     m_TerminalInput->setStyleSheet(R"(
         QLineEdit {
             background: transparent;
             border: none;
-            color: #cccccc;
-            font-family: 'Cascadia Code', 'Consolas', 'JetBrains Mono', monospace;
-            font-size: 13px;
+            color: #f3f3f3;
+            font-family: 'Cascadia Code', 'Cascadia Mono', 'Consolas', monospace;
+            font-size: 14px;
         }
     )");
-    m_TerminalInput->setPlaceholderText(tr("Type command or message for CLI agent..."));
+    m_TerminalInput->setPlaceholderText(tr("Enter command..."));
     connect(m_TerminalInput, &QLineEdit::returnPressed, this, &AIConsoleWidget::handleTerminalInput);
     termInputLayout->addWidget(m_TerminalInput);
     
@@ -1607,8 +1678,24 @@ void AIConsoleWidget::handleTerminalInput()
     
     if (input.isEmpty()) return;
     
-    // Echo input to terminal
-    appendTerminalOutput("❯ " + input + "\n", "#4ec9b0");
+    // Get provider for appropriate prompt styling
+    QSettings settings;
+    QString provider = settings.value("ai_provider", "gemini").toString();
+    
+    QString promptColor = "#569cd6";
+    QString promptText = "PS>";
+    
+    if (provider == "gemini") {
+        promptColor = "#4285f4";
+        promptText = "gemini>";
+    } else if (provider == "copilot") {
+        promptColor = "#6e40c9";
+        promptText = "copilot>";
+    }
+    
+    // Echo input to terminal with styled prompt
+    appendTerminalOutput(promptText + " ", promptColor);
+    appendTerminalOutput(input + "\n", "#f3f3f3");
     
     // Send to CLI agent
     sendToCliAgent(input);
@@ -1621,14 +1708,82 @@ void AIConsoleWidget::appendTerminalOutput(const QString &text, const QString &c
     QTextCursor cursor = m_TerminalOutput->textCursor();
     cursor.movePosition(QTextCursor::End);
     
-    QTextCharFormat format;
-    if (!color.isEmpty()) {
-        format.setForeground(QColor(color));
+    // Parse ANSI escape codes for colors
+    QString processedText = text;
+    
+    // Simple ANSI color code mapping
+    static const QMap<QString, QString> ansiColors = {
+        {"\033[0m", "#cccccc"},   // Reset
+        {"\033[30m", "#0c0c0c"},  // Black
+        {"\033[31m", "#cd3131"},  // Red
+        {"\033[32m", "#0dbc79"},  // Green
+        {"\033[33m", "#e5e510"},  // Yellow
+        {"\033[34m", "#2472c8"},  // Blue
+        {"\033[35m", "#bc3fbc"},  // Magenta
+        {"\033[36m", "#11a8cd"},  // Cyan
+        {"\033[37m", "#e5e5e5"},  // White
+        {"\033[90m", "#666666"},  // Bright Black (Gray)
+        {"\033[91m", "#f14c4c"},  // Bright Red
+        {"\033[92m", "#23d18b"},  // Bright Green
+        {"\033[93m", "#f5f543"},  // Bright Yellow
+        {"\033[94m", "#3b8eea"},  // Bright Blue
+        {"\033[95m", "#d670d6"},  // Bright Magenta
+        {"\033[96m", "#29b8db"},  // Bright Cyan
+        {"\033[97m", "#ffffff"},  // Bright White
+        {"\033[1m", ""},          // Bold (handled separately)
+    };
+    
+    // Check if text contains ANSI codes
+    bool hasAnsi = processedText.contains("\033[");
+    
+    if (hasAnsi) {
+        // Split by ANSI codes and colorize each segment
+        QRegularExpression ansiRe("\033\\[([0-9;]+)m");
+        QString currentColor = color.isEmpty() ? "#cccccc" : color;
+        int lastPos = 0;
+        
+        QRegularExpressionMatchIterator it = ansiRe.globalMatch(processedText);
+        while (it.hasNext()) {
+            QRegularExpressionMatch match = it.next();
+            
+            // Insert text before this ANSI code
+            if (match.capturedStart() > lastPos) {
+                QString segment = processedText.mid(lastPos, match.capturedStart() - lastPos);
+                QTextCharFormat format;
+                format.setForeground(QColor(currentColor));
+                cursor.insertText(segment, format);
+            }
+            
+            // Update color based on ANSI code
+            QString code = match.captured(0);
+            if (ansiColors.contains(code)) {
+                QString newColor = ansiColors[code];
+                if (!newColor.isEmpty()) {
+                    currentColor = newColor;
+                }
+            }
+            
+            lastPos = match.capturedEnd();
+        }
+        
+        // Insert remaining text
+        if (lastPos < processedText.length()) {
+            QString segment = processedText.mid(lastPos);
+            QTextCharFormat format;
+            format.setForeground(QColor(currentColor));
+            cursor.insertText(segment, format);
+        }
     } else {
-        format.setForeground(QColor("#cccccc"));
+        // No ANSI codes, use simple coloring
+        QTextCharFormat format;
+        if (!color.isEmpty()) {
+            format.setForeground(QColor(color));
+        } else {
+            format.setForeground(QColor("#cccccc"));
+        }
+        cursor.insertText(processedText, format);
     }
     
-    cursor.insertText(text, format);
     m_TerminalOutput->setTextCursor(cursor);
     m_TerminalOutput->ensureCursorVisible();
 }
@@ -1637,9 +1792,12 @@ void AIConsoleWidget::switchToTerminalView()
 {
     if (m_StackedWidget && m_TerminalWidget) {
         m_StackedWidget->setCurrentWidget(m_TerminalWidget);
+        
+        QSettings settings;
+        QString provider = settings.value("ai_provider", "gemini").toString();
+        
+        // Update header title
         if (m_TitleLabel) {
-            QSettings settings;
-            QString provider = settings.value("ai_provider", "gemini").toString();
             if (provider == "gemini") {
                 m_TitleLabel->setText(tr("TERMINAL - GEMINI CLI"));
             } else if (provider == "copilot") {
@@ -1648,11 +1806,58 @@ void AIConsoleWidget::switchToTerminalView()
                 m_TitleLabel->setText(tr("TERMINAL"));
             }
         }
+        
+        // Update terminal tab label
+        if (m_TerminalTabLabel) {
+            if (provider == "gemini") {
+                m_TerminalTabLabel->setText(tr("Gemini CLI"));
+            } else if (provider == "copilot") {
+                m_TerminalTabLabel->setText(tr("GitHub Copilot"));
+            } else {
+                m_TerminalTabLabel->setText(tr("Terminal"));
+            }
+        }
+        
+        // Update prompt label
+        if (m_TerminalPromptLabel) {
+            if (provider == "gemini") {
+                m_TerminalPromptLabel->setText(tr("gemini>"));
+                m_TerminalPromptLabel->setStyleSheet(R"(
+                    color: #4285f4;
+                    font-family: 'Cascadia Code', 'Consolas', monospace;
+                    font-size: 14px;
+                    font-weight: bold;
+                    padding-right: 8px;
+                )");
+            } else if (provider == "copilot") {
+                m_TerminalPromptLabel->setText(tr("copilot>"));
+                m_TerminalPromptLabel->setStyleSheet(R"(
+                    color: #6e40c9;
+                    font-family: 'Cascadia Code', 'Consolas', monospace;
+                    font-size: 14px;
+                    font-weight: bold;
+                    padding-right: 8px;
+                )");
+            } else {
+                m_TerminalPromptLabel->setText(tr("PS>"));
+                m_TerminalPromptLabel->setStyleSheet(R"(
+                    color: #569cd6;
+                    font-family: 'Cascadia Code', 'Consolas', monospace;
+                    font-size: 14px;
+                    font-weight: bold;
+                    padding-right: 8px;
+                )");
+            }
+        }
+        
         if (m_TerminalInput) {
             m_TerminalInput->setFocus();
         }
-        // Hide AI-specific buttons
+        
+        // Hide AI-specific buttons when in terminal mode
         if (m_AnalyzeButton) m_AnalyzeButton->hide();
+        if (m_ClearButton) m_ClearButton->hide();
+        if (m_DepsButton) m_DepsButton->hide();
     }
 }
 
@@ -1666,8 +1871,10 @@ void AIConsoleWidget::switchToAiAssistantView()
         if (m_InputLine) {
             m_InputLine->setFocus();
         }
-        // Show AI-specific buttons
+        // Show AI-specific buttons when back in assistant mode
         if (m_AnalyzeButton) m_AnalyzeButton->show();
+        if (m_ClearButton) m_ClearButton->show();
+        if (m_DepsButton) m_DepsButton->show();
     }
 }
 
