@@ -210,56 +210,6 @@ AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     
     // Check if AI is enabled
     QSettings settings;
-    headerLayout->addStretch();
-    
-    m_AnalyzeButton = new QPushButton(tr("Analyze Project"), this);
-    m_AnalyzeButton->setIcon(QIcon(":/icons/icons8/icons8-search-48.png"));
-    connect(m_AnalyzeButton, &QPushButton::clicked, this, &AIConsoleWidget::analyzeProject);
-    headerLayout->addWidget(m_AnalyzeButton);
-    
-    m_ClearButton = new QPushButton(tr("Clear"), this);
-    connect(m_ClearButton, &QPushButton::clicked, this, &AIConsoleWidget::clear);
-    headerLayout->addWidget(m_ClearButton);
-    
-    layout->addLayout(headerLayout);
-    
-    // Console output
-    m_OutputConsole = new QPlainTextEdit(this);
-    m_OutputConsole->setReadOnly(true);
-    m_OutputConsole->setPlaceholderText(tr("AI responses will appear here...\n\nConfigure your API key in Settings > AI Assistant to get started."));
-    
-    // Modern monospace font
-    QFont font;
-#ifdef Q_OS_WIN
-    font.setFamily("Cascadia Code");
-#elif defined(Q_OS_MACOS)
-    font.setFamily("SF Mono");
-#else
-    font.setFamily("JetBrains Mono");
-#endif
-    font.setPointSize(10);
-    font.setStyleHint(QFont::Monospace);
-    m_OutputConsole->setFont(font);
-    
-    layout->addWidget(m_OutputConsole, 1);
-    
-    // Input area
-    auto inputLayout = new QHBoxLayout();
-    m_InputLine = new QLineEdit(this);
-    m_InputLine->setPlaceholderText(tr("Ask AI about this project... (e.g., 'find security issues', 'explain MainActivity')"));
-    m_InputLine->setFont(font);
-    connect(m_InputLine, &QLineEdit::returnPressed, this, &AIConsoleWidget::handleSendMessage);
-    inputLayout->addWidget(m_InputLine);
-    
-    m_SendButton = new QPushButton(tr("Send"), this);
-    m_SendButton->setDefault(true);
-    connect(m_SendButton, &QPushButton::clicked, this, &AIConsoleWidget::handleSendMessage);
-    inputLayout->addWidget(m_SendButton);
-    
-    layout->addLayout(inputLayout);
-    
-    // Check if AI is enabled
-    QSettings settings;
     bool enabled = settings.value("ai_enabled", false).toBool();
     QString apiKey = settings.value("ai_api_key").toString();
     
