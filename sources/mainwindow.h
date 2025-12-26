@@ -9,10 +9,13 @@
 #include <QListView>
 #include <QLabel>
 #include <QProgressBar>
-#include <QProgressDialog>
 #include <QFileIconProvider>
 #include <QStandardItemModel>
 #include <QSortFilterProxyModel>
+#include <QTabWidget>
+#include <QMenu>
+#include <QAction>
+#include <QProgressDialog>
 #include "aiconsolewidget.h"
 #include "gamemodtools.h"
 
@@ -33,46 +36,80 @@ public:
 
     explicit MainWindow(const QMap<QString, QString> &versions, QWidget *parent = nullptr);
     ~MainWindow();
+
     void openApkFile(const QString &apkPath);
 
 private slots:
+    // UI Navigation
     void switchSection(Section section);
+    void toggleSidebar(bool visible);
+    
+    // File Operations
+    void handleActionApk();
+    void handleActionFolder();
+    void handleActionFile();
+    void handleActionSave();
+    void handleActionSaveAll();
+    void handleActionClose();
+    void handleActionCloseAll();
+    void handleActionSettings();
+    void handleActionQuit();
+
+    // Context & Analysis
     void analyzeProjectContext(const QString &path);
+    void handleAIAnalysisComplete(const QString &analysisPath);
+    
+    // Section Handlers
     void handleToolAIGameMod();
     void handleSecurityAnalysis();
     void handleApkCloning();
     void handleAppModification();
-    void updateStatusBar(const QString &msg);
-    void openProject(const QString &folder);
+    
+    // Decompile Handlers
     void handleDecompileFinished(const QString &apk, const QString &folder);
     void handleDecompileFailed(const QString &apk);
     void handleDecompileProgress(int percent, const QString &message);
 
+    // Tab Management
+    void handleTabChanged(int index);
+    void handleTabCloseRequested(int index);
+    void openFile(const QString &path);
+
 private:
-    QString getCurrentProjectPath();
     void setupActivityBar();
     void setupSidebars();
     void setupModernStyles();
-    
-    // UI Elements (VS Code Layout)
+    void setupMenuBar();
+    void setupStatusBarCustom(const QMap<QString, QString> &versions);
+    void reloadChildren(QTreeWidgetItem *item);
+    QString getCurrentProjectPath();
+
+    // VS Code Layout Elements
     QToolBar *m_ActivityBar;
     QStackedWidget *m_SidebarStack;
+    QTabWidget *m_TabEditors;
     QStackedWidget *m_CentralStack;
+    QWidget *m_SidebarContainer;
+    
+    // Actions
+    QActionGroup *m_ActivityGroup;
+    QAction *m_ActionSave;
+    QAction *m_ActionSaveAll;
+    QAction *m_ActionClose;
     
     // Section Widgets
     QTreeWidget *m_ExplorerTree;
     AIConsoleWidget *m_AIStudioWidget;
-    AIGameModDialog *m_GameModWidget;
     
-    // Status Elements
+    // Status
     QLabel *m_StatusProjectInfo;
     QLabel *m_StatusEngineInfo;
     QProgressDialog *m_GlobalProgress;
 
     QString m_CurrentProjectPath;
-    QString m_DetectedContext; // Flutter, Unity, Kotlin, etc.
-    
+    QString m_DetectedContext;
     QFileIconProvider m_IconProvider;
+    QStandardItemModel *m_ModelOpenFiles;
 };
 
 #endif // MAINWINDOW_H
