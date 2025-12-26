@@ -20,6 +20,8 @@
 #include <QTimer>
 #include <QToolTip>
 #include <QCompleter>
+#include <QAbstractItemView>
+#include <QMenu>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QStringConverter>
 #endif

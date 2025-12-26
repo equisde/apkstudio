@@ -243,7 +243,10 @@ void MainWindow::analyzeProjectContext(const QString &path) {
 
     GameEngineDetector::Engine engine = GameEngineDetector::detectEngine(path);
     m_DetectedContext = GameEngineDetector::engineName(engine);
-    m_StatusEngineInfo->setText("Target: " + m_DetectedContext);
+    m_StatusEngineInfo->setText(tr("Context: ") + m_DetectedContext);
+    
+    // Generate AI Reports
+    QString report = tr("# Analysis Report\nDetected: ") + m_DetectedContext;
     
     if (m_AIStudioWidget) m_AIStudioWidget->setProjectPath(path);
 }

@@ -5,6 +5,7 @@
 #include <QStyleHints>
 #include <QTextStream>
 #include <QDateTime>
+#include <QTranslator>
 #include "splashwindow.h"
 
 #define CODE_RESTART 60600
@@ -48,6 +49,18 @@ int main(int argc, char *argv[])
         app.setWindowIcon(QIcon(":/images/icon.png"));
 
         QSettings settings;
+        
+        // Load translation
+        const QString lang = settings.value("language", "en").toString();
+        QTranslator translator;
+        if (lang != "en") {
+            if (translator.load(QString(":/translations/apkstudio_%1.qm").arg(lang))) {
+                app.installTranslator(&translator);
+            } else {
+                qDebug() << "Failed to load translation for" << lang;
+            }
+        }
+
         const bool dark = settings.value("dark_theme", false).toBool();
         
         // Use Qt 6 native Fusion style

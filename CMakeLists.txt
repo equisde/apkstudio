@@ -6,11 +6,25 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find Qt6
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Widgets LinguistTools)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
+
+# Translation files
+set(TS_FILES
+    resources/translations/apkstudio_en.ts
+    resources/translations/apkstudio_es.ts
+    resources/translations/apkstudio_pt.ts
+    resources/translations/apkstudio_cl.ts
+    resources/translations/apkstudio_hack.ts
+)
+
+qt_add_translations(${PROJECT_NAME}
+    TS_FILES ${TS_FILES}
+    RESOURCE_PREFIX "/translations"
+)
 
 # Git version info
 find_package(Git QUIET)

@@ -159,10 +159,22 @@ void LanguageSettingsWidget::onLanguageSelected(int index)
 {
     QString langCode = m_LanguageCombo->itemData(index).toString();
     QSettings settings;
+    if (settings.value("language", "en").toString() == langCode) {
+        return;
+    }
+
     settings.setValue("language", langCode);
     settings.sync();
     s_CurrentLanguage = langCode;
-    m_InfoLabel->setText(tr("Language changed. Please restart for colloquialisms to kick in!"));
+    
+    int btn = QMessageBox::information(this,
+                                       tr("Language"),
+                                       tr("Application language changed. You need to restart APK Studio for changes to take effect."),
+                                       tr("Restart"),
+                                       tr("OK"));
+    if (btn == 0) {
+        qApp->exit(60600); // CODE_RESTART
+    }
 }
 
 void LanguageSettingsWidget::save() {}
