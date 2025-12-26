@@ -142,12 +142,30 @@ private slots:
     void handleTreeDoubleClicked(const QModelIndex &index);
     void handleTreeSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected);
     void handleAIAnalysisComplete(const QString &analysisPath);
+    
+    // Tool handlers
+    void handleToolApkInfo();
+    void handleToolSizeAnalyzer();
+    void handleToolCertInfo();
+    void handleToolCompareApks();
+    void handleToolPermissions();
+    void handleToolObfuscation();
+    void handleToolNativeLibs();
+    void handleToolFirebase();
+    void handleToolApiKeyFinder();
+    void handleToolHardcodedFinder();
+    void handleToolSearch();
+    void handleToolSmaliPatcher();
+    void handleToolAndroidTV();
+    void handleToolStringEditor();
+    
     void openFile(const QString &file);
     void openFindReplaceDialog(QPlainTextEdit *edit, const bool replace);
     void openProject(const QString &folder, const bool last = false);
     void reloadChildren(QTreeWidgetItem *item);
     void filterProjectTreeItems(QTreeWidgetItem *item, const QString &filter);
 private:
+    QString getCurrentProjectPath();
     bool saveTab(int index);
 };
 

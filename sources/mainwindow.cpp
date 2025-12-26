@@ -34,6 +34,7 @@
 #include "deviceselectiondialog.h"
 #include "findreplacedialog.h"
 #include "advancedcodeeditor.h"
+#include "apkanalysistools.h"
 #include "hexedit.h"
 #include "imageviewerwidget.h"
 #include "markdownviewerwidget.h"
@@ -470,14 +471,48 @@ QMenuBar *MainWindow::buildMenuBar()
     m_ActionBuild1 = project->addAction(tr("Build"), this, &MainWindow::handleActionBuild);
     m_ActionBuild1->setEnabled(false);
     project->addSeparator();
-    m_ActionSign = project->addAction(tr("Sign / export"), this, &MainWindow::handleActionSign);
+    m_ActionSign = project->addAction(tr("Sign / Export"), this, &MainWindow::handleActionSign);
     m_ActionSign->setEnabled(false);
-    m_ActionInstall1 = project->addAction(tr("Install"), this, &MainWindow::handleActionInstall);
+    m_ActionInstall1 = project->addAction(tr("Install on Device"), this, &MainWindow::handleActionInstall);
     m_ActionInstall1->setEnabled(false);
     project->addSeparator();
-    project->addAction(tr("Install framework"), this, &MainWindow::handleActionInstallFramework);
+    project->addAction(tr("Install Framework"), this, &MainWindow::handleActionInstallFramework);
+    
+    // Tools menu - expanded with all analysis tools
     auto tools = menubar->addMenu(tr("Tools"));
-    tools->addAction(tr("AntiSplit (Merge APKs)"), this, &MainWindow::handleActionAntiSplit);
+    
+    // APK Tools submenu
+    auto apkTools = tools->addMenu(tr("📦 APK Tools"));
+    apkTools->addAction(tr("AntiSplit (Merge APKs)"), this, &MainWindow::handleActionAntiSplit);
+    apkTools->addAction(tr("APK Information"), this, &MainWindow::handleToolApkInfo);
+    apkTools->addAction(tr("APK Size Analyzer"), this, &MainWindow::handleToolSizeAnalyzer);
+    apkTools->addAction(tr("Certificate Info"), this, &MainWindow::handleToolCertInfo);
+    apkTools->addAction(tr("Compare APKs"), this, &MainWindow::handleToolCompareApks);
+    
+    // Analysis submenu
+    auto analysis = tools->addMenu(tr("🔍 Analysis"));
+    analysis->addAction(tr("Permission Analyzer"), this, &MainWindow::handleToolPermissions);
+    analysis->addAction(tr("Obfuscation Detector"), this, &MainWindow::handleToolObfuscation);
+    analysis->addAction(tr("Native Library Inspector"), this, &MainWindow::handleToolNativeLibs);
+    analysis->addAction(tr("Firebase Config Extractor"), this, &MainWindow::handleToolFirebase);
+    
+    // Security submenu
+    auto security = tools->addMenu(tr("🔐 Security"));
+    security->addAction(tr("API Key Finder"), this, &MainWindow::handleToolApiKeyFinder);
+    security->addAction(tr("Hardcoded URL/IP Finder"), this, &MainWindow::handleToolHardcodedFinder);
+    
+    // Search submenu
+    auto search = tools->addMenu(tr("🔎 Search"));
+    search->addAction(tr("Search in Project..."), this, &MainWindow::handleToolSearch, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    search->addAction(tr("Smali Patcher (Find & Replace)"), this, &MainWindow::handleToolSmaliPatcher);
+    
+    // Android TV submenu
+    auto androidTV = tools->addMenu(tr("📺 Android TV"));
+    androidTV->addAction(tr("TV Optimizer"), this, &MainWindow::handleToolAndroidTV);
+    
+    tools->addSeparator();
+    tools->addAction(tr("String Resource Editor"), this, &MainWindow::handleToolStringEditor);
+    
     auto help = menubar->addMenu(tr("Help"));
     help->addAction(tr("About"), this, &MainWindow::handleActionAbout);
     help->addAction(tr("Documentation"), this, &MainWindow::handleActionDocumentation);
@@ -1838,6 +1873,195 @@ bool MainWindow::saveTab(int i)
         }
     }
     return true;
+}
+
+// ==================== Tool Handlers ====================
+
+QString MainWindow::getCurrentProjectPath()
+{
+    // Get project path from the tree widget
+    if (m_ProjectsTree->topLevelItemCount() > 0) {
+        auto item = m_ProjectsTree->topLevelItem(0);
+        return item->data(0, Qt::UserRole + 2).toString();
+    }
+    return QString();
+}
+
+void MainWindow::handleToolApkInfo()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new ApkInfoDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolSizeAnalyzer()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new ApkSizeAnalyzerDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolCertInfo()
+{
+    QString apkPath = QFileDialog::getOpenFileName(this, tr("Select APK"), QString(), tr("APK Files (*.apk)"));
+    if (apkPath.isEmpty()) return;
+    
+    auto dialog = new CertificateInfoDialog(apkPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolCompareApks()
+{
+    auto dialog = new ApkCompareDialog(this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolPermissions()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new PermissionAnalyzerDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolObfuscation()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new ObfuscationDetectorDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolNativeLibs()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new NativeLibraryDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolFirebase()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new FirebaseExtractorDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolApiKeyFinder()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new ApiKeyFinderDialog(projectPath, this);
+    connect(dialog, &ApiKeyFinderDialog::fileSelected, this, [this](const QString &path, int line) {
+        openFile(path);
+        // TODO: Go to line
+    });
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolHardcodedFinder()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new HardcodedFinderDialog(projectPath, this);
+    connect(dialog, &HardcodedFinderDialog::fileSelected, this, [this](const QString &path, int line) {
+        openFile(path);
+    });
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolSearch()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new StringSearchDialog(projectPath, this);
+    connect(dialog, &StringSearchDialog::fileSelected, this, [this](const QString &path, int line) {
+        openFile(path);
+        // Try to go to line in the editor
+        auto widget = m_TabEditors->currentWidget();
+        auto advEdit = dynamic_cast<AdvancedCodeEditor *>(widget);
+        if (advEdit) {
+            advEdit->gotoLine(line);
+        }
+    });
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolSmaliPatcher()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new SmaliPatcherDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolAndroidTV()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new AndroidTVOptimizerDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolStringEditor()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new StringResourceEditorDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
 }
 
 MainWindow::~MainWindow()

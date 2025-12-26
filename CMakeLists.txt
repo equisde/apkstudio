@@ -73,6 +73,7 @@ set(SOURCES
     sources/aisettingswidget.cpp
     sources/antisplitdialog.cpp
     sources/antisplitworker.cpp
+    sources/apkanalysistools.cpp
     sources/apkdecompiledialog.cpp
     sources/apkdecompileworker.cpp
     sources/apkrecompileworker.cpp
@@ -103,6 +104,7 @@ set(HEADERS
     sources/adbinstallworker.h
     sources/advancedcodeeditor.h
     sources/aiconsolewidget.h
+    sources/apkanalysistools.h
     sources/aisettingswidget.h
     sources/antisplitdialog.h
     sources/antisplitworker.h

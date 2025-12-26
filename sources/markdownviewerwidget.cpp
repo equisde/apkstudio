@@ -1,33 +1,87 @@
 #include <QFile>
 #include <QFileInfo>
+#include <QHBoxLayout>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QTextStream>
 #include <QVBoxLayout>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QStringConverter>
+#endif
 #include "markdownviewerwidget.h"
 
 MarkdownViewerWidget::MarkdownViewerWidget(QWidget *parent)
-    : QWidget(parent)
+    : QWidget(parent), m_SourceMode(false)
 {
     auto layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
     
+    // Toolbar
+    auto toolbar = new QWidget(this);
+    toolbar->setStyleSheet("background: #252526; border-bottom: 1px solid #3c3c3c;");
+    auto toolbarLayout = new QHBoxLayout(toolbar);
+    toolbarLayout->setContentsMargins(8, 4, 8, 4);
+    
+    m_ToggleButton = new QPushButton(tr("📝 View Source"), this);
+    m_ToggleButton->setStyleSheet(R"(
+        QPushButton {
+            background: #3c3c3c;
+            color: #cccccc;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        QPushButton:hover { background: #505050; }
+    )");
+    connect(m_ToggleButton, &QPushButton::clicked, this, &MarkdownViewerWidget::toggleViewMode);
+    toolbarLayout->addWidget(m_ToggleButton);
+    toolbarLayout->addStretch();
+    
+    layout->addWidget(toolbar);
+    
+    // Stacked widget for toggle
+    m_Stack = new QStackedWidget(this);
+    
+    // Preview browser
     m_Browser = new QTextBrowser(this);
     m_Browser->setOpenExternalLinks(true);
     m_Browser->setFrameStyle(QFrame::NoFrame);
-    
-    // Modern styling
     m_Browser->setStyleSheet(R"(
         QTextBrowser {
-            background-color: #fafafa;
-            color: #333;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
             padding: 20px;
-            font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', sans-serif;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
             font-size: 14px;
-            line-height: 1.6;
         }
     )");
+    m_Stack->addWidget(m_Browser);
     
-    layout->addWidget(m_Browser);
+    // Source editor
+    m_SourceEditor = new QPlainTextEdit(this);
+    m_SourceEditor->setFrameStyle(QFrame::NoFrame);
+    QFont font;
+#ifdef Q_OS_WIN
+    font.setFamily("Cascadia Code");
+#else
+    font.setFamily("JetBrains Mono");
+#endif
+    font.setPointSize(12);
+    m_SourceEditor->setFont(font);
+    m_SourceEditor->setStyleSheet(R"(
+        QPlainTextEdit {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 12px;
+            border: none;
+        }
+    )");
+    connect(m_SourceEditor, &QPlainTextEdit::textChanged, this, &MarkdownViewerWidget::updatePreview);
+    m_Stack->addWidget(m_SourceEditor);
+    
+    layout->addWidget(m_Stack);
 }
 
 QString MarkdownViewerWidget::filePath() const
@@ -46,18 +100,52 @@ void MarkdownViewerWidget::open(const QString &path)
     }
     
     QTextStream in(&file);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     in.setEncoding(QStringConverter::Utf8);
+#endif
     m_RawContent = in.readAll();
     file.close();
     
+    m_SourceEditor->setPlainText(m_RawContent);
     QString html = convertMarkdownToHtml(m_RawContent);
     m_Browser->setHtml(html);
 }
 
 bool MarkdownViewerWidget::save()
 {
-    // Markdown viewer is read-only for now
+    if (m_FilePath.isEmpty()) return false;
+    
+    QFile file(m_FilePath);
+    if (!file.open(QFile::WriteOnly | QFile::Text)) return false;
+    
+    QTextStream out(&file);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    out.setEncoding(QStringConverter::Utf8);
+#endif
+    out << m_SourceEditor->toPlainText();
+    file.close();
     return true;
+}
+
+void MarkdownViewerWidget::toggleViewMode()
+{
+    m_SourceMode = !m_SourceMode;
+    if (m_SourceMode) {
+        m_ToggleButton->setText(tr("👁️ Preview"));
+        m_Stack->setCurrentWidget(m_SourceEditor);
+    } else {
+        m_ToggleButton->setText(tr("📝 View Source"));
+        updatePreview();
+        m_Stack->setCurrentWidget(m_Browser);
+    }
+}
+
+void MarkdownViewerWidget::updatePreview()
+{
+    m_RawContent = m_SourceEditor->toPlainText();
+    QString html = convertMarkdownToHtml(m_RawContent);
+    m_Browser->setHtml(html);
+}
 }
 
 QString MarkdownViewerWidget::escapeHtml(const QString &text)
