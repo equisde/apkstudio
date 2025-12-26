@@ -220,6 +220,12 @@ void MainWindow::handleDecompileFinished(const QString &apk, const QString &fold
     analyzeProjectContext(folder);
 }
 
+void MainWindow::handleDecompileFailed(const QString &apk) {
+    if (m_GlobalProgress) m_GlobalProgress->close();
+    updateStatusBar(tr("Decompilation failed for: ") + apk);
+    QMessageBox::critical(this, tr("Error"), tr("Failed to decompile APK. Check terminal for details."));
+}
+
 void MainWindow::handleDecompileProgress(int percent, const QString &message) {
     if (m_GlobalProgress) {
         m_GlobalProgress->setValue(percent);

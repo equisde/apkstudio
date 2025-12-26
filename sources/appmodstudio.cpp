@@ -43,3 +43,7 @@ void AppModStudio::scanForPremiumLogic() {
 void AppModStudio::applyUnlockPatch() {
     QMessageBox::information(this, tr("App Mod"), tr("Applying AI-generated patches to smali files..."));
 }
+
+void AppModStudio::aiSuggestModifications() {
+    m_AiLog->append("<i>[AI] Generating suggestions for application level modifications...</i>");
+}
