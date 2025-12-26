@@ -2,14 +2,9 @@ name: Build
 
 on:
   push:
-    branches:
-      - master
-      - feature/antisplit
+    branches: [ master, feature/antisplit ]
   pull_request:
-    branches:
-      - master
-  release:
-    types: [created]
+    branches: [ master ]
   workflow_dispatch:
 
 permissions:
@@ -21,57 +16,43 @@ concurrency:
 
 jobs:
   build-windows:
-    name: Build Windows (Fresh)
+    name: Build Windows (MSVC Fresh)
     runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
-          # Cache disabled for fresh environment
+          arch: "win64_msvc2022_64"
 
-      - name: Clean Environment
+      - name: Clean and Configure
         run: |
           if (Test-Path build) { Remove-Item -Recurse -Force build }
-          if (Test-Path bin) { Remove-Item -Recurse -Force bin }
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022" -A x64
         shell: pwsh
 
-      - name: Configure CMake
-        run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -GNinja
-        env:
-          CMAKE_GENERATOR: Ninja
-
       - name: Build
-        run: |
-          cmake --build build --config Release --parallel
-
+        run: cmake --build build --config Release --parallel
+        
       - name: Deploy
         shell: pwsh
         run: |
           $env:PATH = "$env:Qt6_DIR\bin;$env:PATH"
-          $ExePath = "build/bin/Release/ApkStudio.exe"
-          if (!(Test-Path $ExePath)) { $ExePath = "build/Release/ApkStudio.exe" }
-          windeployqt --release --no-translations --no-opengl-sw $ExePath
-
-      - name: Archive
-        shell: pwsh
-        run: |
-          $SourceDir = "build/bin/Release"
-          if (!(Test-Path $SourceDir)) { $SourceDir = "build/Release" }
-          Compress-Archive -Path "$SourceDir\*" -DestinationPath ApkStudio-Windows-x64.zip
+          windeployqt --release --no-translations build\bin\Release\ApkStudio.exe
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: ApkStudio-Windows-x64
-          path: ApkStudio-Windows-x64.zip
+          name: ApkStudio-Windows-MSVC
+          path: build\bin\Release\
 
   build-linux:
     name: Build Linux (Fresh)
@@ -82,21 +63,23 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 fuse ninja-build
+          sudo apt-get install -y --no-install-recommends libgl1-mesa-dev libxkbcommon-x11-0 fuse ninja-build
 
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
 
-      - name: Fresh Configure & Build
+      - name: Clean and Configure
         run: |
           rm -rf build
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -GNinja
-          cmake --build build --config Release
+
+      - name: Build
+        run: cmake --build build --config Release
 
       - name: Prepare AppImage
         run: |
@@ -110,7 +93,7 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: ApkStudio-Linux-x64
+          name: ApkStudio-Linux-AppImage
           path: ApkStudio*.AppImage
 
   build-macos:
@@ -127,13 +110,15 @@ jobs:
         with:
           version: "6.10.1"
 
-      - name: Fresh Build
+      - name: Clean and Configure
         run: |
           rm -rf build
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}" -GNinja
-          cmake --build build --config Release
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}" -GNinja
 
-      - name: Bundle
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Bundle and DMG
         run: |
           ${{ env.Qt6_DIR }}/bin/macdeployqt build/bin/ApkStudio.app -dmg
           mv build/bin/ApkStudio.dmg ApkStudio-macOS.dmg
@@ -141,5 +126,5 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: ApkStudio-macOS-x64
+          name: ApkStudio-macOS-DMG
           path: ApkStudio-macOS.dmg
