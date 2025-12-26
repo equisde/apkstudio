@@ -32,6 +32,7 @@ public:
 
     explicit MainWindow(const QMap<QString, QString> &versions, QWidget *parent = nullptr);
     ~MainWindow();
+    void openApkFile(const QString &apkPath);
 
 private slots:
     void switchSection(Section section);
@@ -41,8 +42,13 @@ private slots:
     void handleApkCloning();
     void handleAppModification();
     void updateStatusBar(const QString &msg);
+    void openProject(const QString &folder);
+    void handleDecompileFinished(const QString &apk, const QString &folder);
+    void handleDecompileFailed(const QString &apk);
+    void handleDecompileProgress(int percent, const QString &message);
 
 private:
+    QString getCurrentProjectPath();
     void setupActivityBar();
     void setupSidebars();
     void setupModernStyles();
@@ -60,7 +66,7 @@ private:
     // Status Elements
     QLabel *m_StatusProjectInfo;
     QLabel *m_StatusEngineInfo;
-    QProgressBar *m_GlobalProgress;
+    QProgressDialog *m_GlobalProgress;
 
     QString m_CurrentProjectPath;
     QString m_DetectedContext; // Flutter, Unity, Kotlin, etc.

@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "gamemodtools.h"
+#include "apkdecompiledialog.h"
+#include "apkdecompileworker.h"
 #include <QStyleHints>
 #include <QApplication>
 #include <QSplitter>
@@ -10,6 +12,9 @@
 #include <QMessageBox>
 #include <QDir>
 #include <QDebug>
+#include <QThread>
+#include <QProgressDialog>
+#include <QSettings>
 
 MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
     : QMainWindow(parent)
@@ -172,6 +177,95 @@ void MainWindow::setupSidebars()
 }
 
 void MainWindow::updateStatusBar(const QString &msg) { statusBar()->showMessage(msg); }
+
+void MainWindow::openApkFile(const QString &apkPath)
+{
+    if (apkPath.isEmpty() || !QFile::exists(apkPath)) {
+        return;
+    }
+    
+    auto dialog = new ApkDecompileDialog(QDir::toNativeSeparators(apkPath), this);
+    if (dialog->exec() == QDialog::Accepted) {
+        auto thread = new QThread();
+        auto worker = new ApkDecompileWorker(dialog->apk(), dialog->folder(), dialog->smali(), dialog->resources(), dialog->java(), dialog->frameworkTag(), dialog->extraArguments());
+        worker->moveToThread(thread);
+        
+        connect(worker, &ApkDecompileWorker::decompileFailed, this, &MainWindow::handleDecompileFailed);
+        connect(worker, &ApkDecompileWorker::decompileFinished, this, &MainWindow::handleDecompileFinished);
+        connect(worker, &ApkDecompileWorker::decompileProgress, this, &MainWindow::handleDecompileProgress);
+        connect(thread, &QThread::started, worker, &ApkDecompileWorker::decompile);
+        connect(worker, &ApkDecompileWorker::finished, thread, &QThread::quit);
+        connect(worker, &ApkDecompileWorker::finished, worker, &QObject::deleteLater);
+        connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+        
+        m_GlobalProgress = new QProgressDialog(this);
+        m_GlobalProgress->setCancelButton(nullptr);
+        m_GlobalProgress->setLabelText(tr("Decompiling APK..."));
+        m_GlobalProgress->setRange(0, 100);
+        m_GlobalProgress->setWindowFlags(m_GlobalProgress->windowFlags() & ~Qt::WindowCloseButtonHint);
+        m_GlobalProgress->setWindowTitle(tr("Decompiling"));
+        
+        thread->start();
+        m_GlobalProgress->exec();
+    }
+    dialog->deleteLater();
+}
+
+void MainWindow::handleDecompileFinished(const QString &apk, const QString &folder)
+{
+    Q_UNUSED(apk)
+    if (m_GlobalProgress) {
+        m_GlobalProgress->close();
+        m_GlobalProgress->deleteLater();
+        m_GlobalProgress = nullptr;
+    }
+    updateStatusBar(tr("Decompilation finished."));
+    openProject(folder);
+}
+
+void MainWindow::handleDecompileFailed(const QString &apk)
+{
+    Q_UNUSED(apk)
+    if (m_GlobalProgress) {
+        m_GlobalProgress->close();
+        m_GlobalProgress->deleteLater();
+        m_GlobalProgress = nullptr;
+    }
+    updateStatusBar(tr("Decompilation failed."));
+    QMessageBox::critical(this, tr("Error"), tr("Failed to decompile APK. Check console for details."));
+}
+
+void MainWindow::handleDecompileProgress(int percent, const QString &message)
+{
+    if (m_GlobalProgress) {
+        m_GlobalProgress->setLabelText(message);
+        m_GlobalProgress->setValue(percent);
+    }
+}
+
+void MainWindow::openProject(const QString &folder)
+{
+    QSettings settings;
+    settings.setValue("open_project", folder);
+    
+    analyzeProjectContext(folder);
+    
+    // Refresh explorer tree (stub for now)
+    m_ExplorerTree->clear();
+    auto root = new QTreeWidgetItem(m_ExplorerTree);
+    root->setText(0, QFileInfo(folder).fileName());
+    root->setData(0, Qt::UserRole, folder);
+    m_ExplorerTree->addTopLevelItem(root);
+}
+
+QString MainWindow::getCurrentProjectPath()
+{
+    if (m_ExplorerTree->topLevelItemCount() > 0) {
+        return m_ExplorerTree->topLevelItem(0)->data(0, Qt::UserRole).toString();
+    }
+    return QString();
+}
+
 void MainWindow::handleToolAIGameMod() {}
 void MainWindow::handleSecurityAnalysis() {}
 void MainWindow::handleApkCloning() {}
