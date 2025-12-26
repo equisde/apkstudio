@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QMessageBox>
+#include <QNetworkReply>
 #include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
