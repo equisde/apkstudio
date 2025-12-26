@@ -11,6 +11,7 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QNetworkAccessManager>
+#include <QVBoxLayout>
 #include <functional>
 
 class GameEngineDetector
