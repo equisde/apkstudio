@@ -18,52 +18,49 @@
 #include <QThread>
 #include <QActionGroup>
 #include <QApplication>
+#include <QTimer>
 
 MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
     : QMainWindow(parent)
 {
     setupModernStyles();
     
-    // Contenedor principal estilo VS Code
     auto centralWidget = new QWidget(this);
     auto mainLayout = new QHBoxLayout(centralWidget);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
     setCentralWidget(centralWidget);
 
-    // 1. Activity Bar (Extremo Izquierdo)
     setupActivityBar();
     mainLayout->addWidget(m_ActivityBar);
 
-    // 2. Sidebar + Central Area Splitter
     auto mainSplitter = new QSplitter(Qt::Horizontal, this);
     mainSplitter->setHandleWidth(1);
     mainSplitter->setStyleSheet("QSplitter::handle { background-color: #3c3c3c; }");
 
-    // Sidebar Container
     m_SidebarContainer = new QWidget();
     auto sideLayout = new QVBoxLayout(m_SidebarContainer);
     sideLayout->setContentsMargins(0, 0, 0, 0);
     sideLayout->setSpacing(0);
     
     m_SidebarStack = new QStackedWidget();
-    setupSidebars();
+    // Widgets are initialized during analyzeProjectContext or here
     sideLayout->addWidget(m_SidebarStack);
     
-    m_SidebarContainer->setMinimumWidth(260);
+    m_SidebarContainer->setMinimumWidth(300);
     m_SidebarContainer->setMaximumWidth(500);
     mainSplitter->addWidget(m_SidebarContainer);
 
-    // Editor Area (Central)
     m_CentralStack = new QStackedWidget();
     m_TabEditors = new QTabWidget();
     m_TabEditors->setTabsClosable(true);
     m_TabEditors->setMovable(true);
     m_TabEditors->setDocumentMode(true);
+    m_TabEditors->setStyleSheet("QTabBar::tab { height: 35px; min-width: 100px; }");
     connect(m_TabEditors, &QTabWidget::tabCloseRequested, this, &MainWindow::handleTabCloseRequested);
     connect(m_TabEditors, &QTabWidget::currentChanged, this, &MainWindow::handleTabChanged);
 
-    auto welcome = new QLabel("<h1 style='color: #555;'>APK Studio Pro</h1><p style='color: #777;'>Suelta un APK para empezar la magia.</p>");
+    auto welcome = new QLabel("<h1 style='color: #555;'>APK Studio Pro</h1><p style='color: #777;'>Open an APK to begin AI-powered analysis.</p>");
     welcome->setAlignment(Qt::AlignCenter);
     m_CentralStack->addWidget(welcome);
     m_CentralStack->addWidget(m_TabEditors);
@@ -75,7 +72,9 @@ MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
     setupMenuBar();
     setupStatusBarCustom(versions);
     
-    // Cargar último proyecto si existe
+    // Setup initial empty sidebars
+    setupSidebars();
+
     QTimer::singleShot(100, this, [this]() {
         QSettings settings;
         QString last = settings.value("open_project").toString();
@@ -86,9 +85,8 @@ MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
 void MainWindow::setupMenuBar()
 {
     auto menu = menuBar();
-    menu->setStyleSheet("QMenuBar { background-color: #3c3c3c; color: #cccccc; } QMenuBar::item:selected { background-color: #505050; }");
+    menu->setStyleSheet("QMenuBar { background-color: #3c3c3c; color: #cccccc; padding: 5px; } QMenuBar::item:selected { background-color: #505050; border-radius: 4px; }");
 
-    // FILE
     auto fileMenu = menu->addMenu(tr("&File"));
     fileMenu->addAction(QIcon(":/icons/icons8/icons8-android-os-48.png"), tr("Open &APK..."), QKeySequence::New, this, &MainWindow::handleActionApk);
     fileMenu->addAction(QIcon(":/icons/icons8/icons8-folder-48.png"), tr("Open &Folder..."), QKeySequence::Open, this, &MainWindow::handleActionFolder);
@@ -100,27 +98,18 @@ void MainWindow::setupMenuBar()
     fileMenu->addSeparator();
     fileMenu->addAction(tr("&Quit"), QKeySequence::Quit, this, &MainWindow::handleActionQuit);
 
-    // EDIT (Básico por ahora)
-    auto editMenu = menu->addMenu(tr("&Edit"));
-    editMenu->addAction(tr("Undo"), QKeySequence::Undo, this, [](){});
-    editMenu->addAction(tr("Redo"), QKeySequence::Redo, this, [](){});
-
-    // VIEW
     auto viewMenu = menu->addMenu(tr("&View"));
     auto sideAct = viewMenu->addAction(tr("Show Sidebar"));
     sideAct->setCheckable(true);
     sideAct->setChecked(true);
     connect(sideAct, &QAction::toggled, this, &MainWindow::toggleSidebar);
 
-    // TOOLS (Categorizado como pediste)
     auto toolsMenu = menu->addMenu(tr("&Tools"));
-    
     auto gameMod = toolsMenu->addMenu(tr("🎮 Game Modding"));
     gameMod->addAction(tr("AI Mod Studio"), QKeySequence("Ctrl+Shift+G"), this, &MainWindow::handleToolAIGameMod);
     
     auto secHub = toolsMenu->addMenu(tr("🛡️ Security Hub"));
-    secHub->addAction(tr("Analyze Network"), this, &MainWindow::handleSecurityAnalysis);
-    secHub->addAction(tr("Bypass SSL Pinning"), this, &MainWindow::handleSecurityAnalysis);
+    secHub->addAction(tr("Comprehensive Security Scan"), this, &MainWindow::handleSecurityAnalysis);
     
     toolsMenu->addAction(tr("APK Cloner"), this, &MainWindow::handleApkCloning);
 }
@@ -133,6 +122,7 @@ void MainWindow::setupActivityBar()
     m_ActivityBar->setMovable(false);
     m_ActivityBar->setIconSize(QSize(28, 28));
     m_ActivityBar->setFixedWidth(50);
+    m_ActivityBar->setStyleSheet("background-color: #333333; border: none; padding-top: 10px;");
 
     m_ActivityGroup = new QActionGroup(this);
     m_ActivityGroup->setExclusive(true);
@@ -147,7 +137,9 @@ void MainWindow::setupActivityBar()
 
     addAct(Explorer, ":/icons/icons8/icons8-folder-48.png", "Explorer");
     addAct(GameModding, ":/icons/icons8/icons8-hammer-48.png", "Game Modding");
-    addAct(Security, ":/icons/icons8/icons8-software-installer-48.png", "Security");
+    addAct(Security, ":/icons/icons8/icons8-software-installer-48.png", "Security Hub");
+    addAct(Cloning, ":/icons/icons8/icons8-android-os-48.png", "APK Cloning");
+    addAct(AppMod, ":/icons/fugue/gear.png", "App Modification");
     addAct(AIStudio, ":/icons/icons8/icons8-gear-48.png", "AI Studio");
 
     connect(m_ActivityGroup, &QActionGroup::triggered, this, [this](QAction *a) {
@@ -158,38 +150,36 @@ void MainWindow::setupActivityBar()
 
 void MainWindow::setupSidebars()
 {
-    // 0. Explorador de Archivos Profesional
+    // 0. Explorer
     m_ExplorerTree = new QTreeWidget();
     m_ExplorerTree->setHeaderLabel(tr("PROJECT EXPLORER"));
     m_ExplorerTree->setAnimated(true);
     m_ExplorerTree->setIndentation(15);
+    m_ExplorerTree->setStyleSheet("QTreeWidget { background-color: #252526; color: #cccccc; border: none; }");
     connect(m_ExplorerTree, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *item) {
         QString path = item->data(0, Qt::UserRole).toString();
         if (!path.isEmpty() && QFileInfo(path).isFile()) openFile(path);
     });
     m_SidebarStack->addWidget(m_ExplorerTree);
 
-    // 1. Placeholder Search
-    m_SidebarStack->addWidget(new QLabel("Search Panel (Work in Progress)"));
+    // 1. Search (Stub)
+    m_SidebarStack->addWidget(new QLabel("Search..."));
 
-    // 2. Game Mod Sidebar
-    auto gmWidget = new QWidget();
-    auto gmLayout = new QVBoxLayout(gmWidget);
-    gmLayout->addWidget(new QLabel("<b>GAME ENGINE MODS</b>"));
-    auto btnDump = new QPushButton("🚀 Run Engine Dumper (IA)");
-    connect(btnDump, &QPushButton::clicked, this, &MainWindow::handleToolAIGameMod);
-    gmLayout->addWidget(btnDump);
-    gmLayout->addStretch();
-    m_SidebarStack->addWidget(gmWidget);
+    // 2. Game Modding
+    m_SidebarStack->addWidget(new QLabel("Select a project first..."));
 
-    // 3. Security Hub Sidebar
-    auto secWidget = new QWidget();
-    auto secLayout = new QVBoxLayout(secWidget);
-    secLayout->addWidget(new QLabel("<b>SECURITY & BYPASS</b>"));
-    secLayout->addWidget(new QPushButton("🛡️ SSL Unpinning Assist"));
-    secLayout->addWidget(new QPushButton("🔒 Anti-Tamper Patch"));
-    secLayout->addStretch();
-    m_SidebarStack->addWidget(secWidget);
+    // 3. Security Hub
+    m_SidebarStack->addWidget(new QLabel("Select a project first..."));
+
+    // 4. Cloning
+    m_SidebarStack->addWidget(new QLabel("Select a project first..."));
+
+    // 5. App Mod
+    m_SidebarStack->addWidget(new QLabel("Select a project first..."));
+
+    // 6. AI Studio
+    m_AIStudioWidget = new AIConsoleWidget();
+    m_SidebarStack->addWidget(m_AIStudioWidget);
 }
 
 void MainWindow::switchSection(Section section) {
@@ -208,8 +198,9 @@ void MainWindow::handleActionApk() {
 void MainWindow::openApkFile(const QString &apkPath) {
     auto dialog = new ApkDecompileDialog(apkPath, this);
     if (dialog->exec() == QDialog::Accepted) {
-        m_GlobalProgress = new QProgressDialog(tr("Extracting APK..."), tr("Cancel"), 0, 100, this);
+        m_GlobalProgress = new QProgressDialog(tr("Decompiling APK..."), tr("Cancel"), 0, 100, this);
         m_GlobalProgress->setWindowModality(Qt::WindowModal);
+        m_GlobalProgress->setStyleSheet("QProgressDialog { background-color: #1e1e1e; color: white; }");
         
         auto thread = new QThread();
         auto worker = new ApkDecompileWorker(dialog->apk(), dialog->folder(), dialog->smali(), dialog->resources(), dialog->java(), "", "");
@@ -238,6 +229,17 @@ void MainWindow::handleDecompileProgress(int percent, const QString &message) {
 
 void MainWindow::analyzeProjectContext(const QString &path) {
     m_CurrentProjectPath = path;
+    
+    // Refresh sidebars with real widgets
+    m_SecurityHub = new SecurityHub(path);
+    m_SidebarStack->insertWidget(Security, m_SecurityHub);
+    
+    m_CloningStudio = new CloningStudio(path);
+    m_SidebarStack->insertWidget(Cloning, m_CloningStudio);
+
+    m_AppModStudio = new AppModStudio(path);
+    m_SidebarStack->insertWidget(AppMod, m_AppModStudio);
+
     m_ExplorerTree->clear();
     auto root = new QTreeWidgetItem(m_ExplorerTree);
     root->setText(0, QFileInfo(path).fileName());
@@ -246,10 +248,14 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     reloadChildren(root);
     root->setExpanded(true);
     
-    // IA contextual logic
     GameEngineDetector::Engine engine = GameEngineDetector::detectEngine(path);
     m_DetectedContext = GameEngineDetector::engineName(engine);
-    m_StatusEngineInfo->setText("Target: " + m_DetectedContext);
+    m_StatusEngineInfo->setText("Environment: " + m_DetectedContext);
+    
+    // Generate AI Reports
+    QString report = "# Analysis Report\nDetected: " + m_DetectedContext;
+    QFile f(path + "/AI_ANALYSIS.md");
+    if(f.open(QFile::WriteOnly)) { f.write(report.toUtf8()); f.close(); }
 }
 
 void MainWindow::reloadChildren(QTreeWidgetItem *item) {
@@ -265,19 +271,15 @@ void MainWindow::reloadChildren(QTreeWidgetItem *item) {
 
 void MainWindow::openFile(const QString &path) {
     if (m_CentralStack->currentIndex() == 0) m_CentralStack->setCurrentIndex(1);
-    
-    // Buscar si ya está abierta
     for (int i=0; i<m_TabEditors->count(); ++i) {
         if (m_TabEditors->tabToolTip(i) == path) {
             m_TabEditors->setCurrentIndex(i);
             return;
         }
     }
-
     QWidget *editor = nullptr;
     QFileInfo info(path);
     QString ext = info.suffix().toLower();
-
     if (ext == "png" || ext == "jpg") {
         auto v = new ImageViewerWidget();
         v->open(path);
@@ -287,7 +289,6 @@ void MainWindow::openFile(const QString &path) {
         e->open(path);
         editor = e;
     }
-
     int idx = m_TabEditors->addTab(editor, m_IconProvider.icon(info), info.fileName());
     m_TabEditors->setTabToolTip(idx, path);
     m_TabEditors->setCurrentIndex(idx);
@@ -302,16 +303,19 @@ void MainWindow::setupModernStyles() {
     setStyleSheet(R"(
         QMainWindow { background-color: #1e1e1e; }
         QToolBar#ActivityBar { background-color: #333333; border: none; }
-        QStatusBar { background-color: #007acc; color: white; }
-        QTabWidget::pane { border-top: 1px solid #3c3c3c; }
+        QStatusBar { background-color: #007acc; color: white; border: none; min-height: 22px; }
+        QTabWidget::pane { border-top: 1px solid #252526; background: #1e1e1e; }
         QTabBar::tab { background: #2d2d2d; color: #969696; padding: 8px 15px; border-right: 1px solid #1e1e1e; }
-        QTabBar::tab:selected { background: #1e1e1e; color: white; }
+        QTabBar::tab:selected { background: #1e1e1e; color: white; border-bottom: 1px solid #007acc; }
+        QPushButton { background-color: #333333; color: #cccccc; border: 1px solid #3c3c3c; padding: 5px; }
+        QPushButton:hover { background-color: #444444; }
     )");
 }
 
 void MainWindow::setupStatusBarCustom(const QMap<QString, QString> &versions) {
     auto sb = statusBar();
     m_StatusEngineInfo = new QLabel("Ready");
+    m_StatusEngineInfo->setStyleSheet("padding-left: 5px;");
     sb->addPermanentWidget(m_StatusEngineInfo);
 }
 

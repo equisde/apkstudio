@@ -18,6 +18,9 @@
 #include <QProgressDialog>
 #include "aiconsolewidget.h"
 #include "gamemodtools.h"
+#include "securityhub.h"
+#include "cloningstudio.h"
+#include "appmodstudio.h"
 
 class MainWindow : public QMainWindow
 {
@@ -100,6 +103,9 @@ private:
     // Section Widgets
     QTreeWidget *m_ExplorerTree;
     AIConsoleWidget *m_AIStudioWidget;
+    SecurityHub *m_SecurityHub;
+    CloningStudio *m_CloningStudio;
+    AppModStudio *m_AppModStudio;
     
     // Status
     QLabel *m_StatusProjectInfo;
