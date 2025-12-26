@@ -16,6 +16,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -1348,6 +1349,108 @@ void StringResourceEditorDialog::removeString()
     }
 }
 
+// ==================== Logcat Viewer ====================
+LogcatViewerDialog::LogcatViewerDialog(const QString &packageName, QWidget *parent)
+    : QDialog(parent), m_PackageName(packageName), m_LogcatProcess(nullptr)
+{
+    setWindowTitle(tr("Logcat Viewer - %1").arg(packageName));
+    setMinimumSize(800, 600);
+    
+    auto layout = new QVBoxLayout(this);
+    
+    // Toolbar
+    auto toolbar = new QHBoxLayout();
+    
+    auto startBtn = new QPushButton(tr("Start"), this);
+    connect(startBtn, &QPushButton::clicked, this, &LogcatViewerDialog::startLogcat);
+    toolbar->addWidget(startBtn);
+    
+    auto stopBtn = new QPushButton(tr("Stop"), this);
+    connect(stopBtn, &QPushButton::clicked, this, &LogcatViewerDialog::stopLogcat);
+    toolbar->addWidget(stopBtn);
+    
+    auto clearBtn = new QPushButton(tr("Clear"), this);
+    connect(clearBtn, &QPushButton::clicked, this, &LogcatViewerDialog::clearLog);
+    toolbar->addWidget(clearBtn);
+    
+    toolbar->addWidget(new QLabel(tr("Filter:"), this));
+    m_FilterInput = new QLineEdit(this);
+    m_FilterInput->setPlaceholderText(tr("Enter filter text..."));
+    connect(m_FilterInput, &QLineEdit::textChanged, this, &LogcatViewerDialog::filterChanged);
+    toolbar->addWidget(m_FilterInput);
+    
+    toolbar->addWidget(new QLabel(tr("Level:"), this));
+    m_LevelCombo = new QComboBox(this);
+    m_LevelCombo->addItems({"Verbose", "Debug", "Info", "Warning", "Error", "Fatal"});
+    m_LevelCombo->setCurrentIndex(2); // Info by default
+    connect(m_LevelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &LogcatViewerDialog::filterChanged);
+    toolbar->addWidget(m_LevelCombo);
+    
+    layout->addLayout(toolbar);
+    
+    // Log view
+    m_LogView = new QPlainTextEdit(this);
+    m_LogView->setReadOnly(true);
+    m_LogView->setFont(QFont("Consolas", 9));
+    m_LogView->setStyleSheet("QPlainTextEdit { background-color: #1e1e1e; color: #d4d4d4; }");
+    layout->addWidget(m_LogView);
+    
+    auto buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    layout->addWidget(buttons);
+}
+
+void LogcatViewerDialog::startLogcat()
+{
+    if (m_LogcatProcess && m_LogcatProcess->state() == QProcess::Running) {
+        return;
+    }
+    
+    m_LogcatProcess = new QProcess(this);
+    connect(m_LogcatProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        QString output = m_LogcatProcess->readAllStandardOutput();
+        m_LogView->appendPlainText(output);
+    });
+    connect(m_LogcatProcess, &QProcess::readyReadStandardError, this, [this]() {
+        QString output = m_LogcatProcess->readAllStandardError();
+        m_LogView->appendPlainText(output);
+    });
+    
+    QSettings settings;
+    QString adbPath = settings.value("adb_path", "adb").toString();
+    
+    QStringList args;
+    args << "logcat";
+    if (!m_PackageName.isEmpty()) {
+        args << "--pid=$(adb shell pidof -s " + m_PackageName + ")";
+    }
+    
+    m_LogcatProcess->start(adbPath, args);
+    m_LogView->appendPlainText(tr("--- Logcat started ---\n"));
+}
+
+void LogcatViewerDialog::stopLogcat()
+{
+    if (m_LogcatProcess && m_LogcatProcess->state() == QProcess::Running) {
+        m_LogcatProcess->terminate();
+        m_LogcatProcess->waitForFinished(3000);
+        m_LogView->appendPlainText(tr("\n--- Logcat stopped ---"));
+    }
+}
+
+void LogcatViewerDialog::clearLog()
+{
+    m_LogView->clear();
+}
+
+void LogcatViewerDialog::filterChanged()
+{
+    // Filter is applied when reading output - for now just log the change
+    QString filter = m_FilterInput->text();
+    QString level = m_LevelCombo->currentText();
+    m_LogView->appendPlainText(tr("Filter changed: %1, Level: %2").arg(filter, level));
+}
+
 // ==================== Certificate Info ====================
 CertificateInfoDialog::CertificateInfoDialog(const QString &apkPath, QWidget *parent)
     : QDialog(parent), m_ApkPath(apkPath)
@@ -1356,6 +1459,7 @@ CertificateInfoDialog::CertificateInfoDialog(const QString &apkPath, QWidget *pa
     setMinimumSize(500, 400);
     
     auto layout = new QVBoxLayout(this);
+    
     
     m_CertTable = new QTableWidget(this);
     m_CertTable->setColumnCount(2);
