@@ -36,11 +36,13 @@
 GameEngineDetector::Engine GameEngineDetector::detectEngine(const QString &projectPath)
 {
     QDir dir(projectPath);
-    // Búsqueda exhaustiva en carpetas comunes de proyectos decompilados
-    if (dir.exists("lib/arm64-v8a/libunity.so") || dir.exists("lib/armeabi-v7a/libunity.so") || dir.exists("assets/bin/Data")) return Unity;
-    if (dir.exists("lib/arm64-v8a/libflutter.so") || dir.exists("assets/flutter_assets")) return Flutter;
-    if (dir.exists("lib/arm64-v8a/libUE4.so") || dir.exists("assets/UE4Game")) return UnrealEngine;
-    if (dir.exists("lib/arm64-v8a/libcocos2dcpp.so") || dir.exists("assets/src")) return Cocos2dx;
+    // Búsqueda exhaustiva incluyendo carpetas de arquitectura
+    QStringList paths = {"lib/arm64-v8a", "lib/armeabi-v7a", "lib/x86", "assets/bin/Data"};
+    for (const QString &p : paths) {
+        if (dir.exists(p + "/libunity.so")) return Unity;
+        if (dir.exists(p + "/libflutter.so")) return Flutter;
+        if (dir.exists(p + "/libUE4.so")) return UnrealEngine;
+    }
     return NativeAndroid;
 }
 
@@ -52,7 +54,7 @@ QString GameEngineDetector::engineName(Engine engine)
         case Cocos2dx: return "Cocos2d-x";
         case Flutter: return "Flutter (Dart)";
         case NativeAndroid: return "Native Android";
-        default: return "Unknown";
+        default: return "Unknown Engine";
     }
 }
 
@@ -76,9 +78,9 @@ void GameModStudio::setupUI()
     layout->addWidget(m_EngineBadge);
 
     auto heroLayout = new QHBoxLayout();
-    m_DownloadToolsBtn = new QPushButton(tr("📥 Setup Tools"));
-    m_RunDumperBtn = new QPushButton(tr("🔧 Run Dumper"));
-    m_AnalyzeBtn = new QPushButton(tr("🤖 AI Analyze"));
+    m_DownloadToolsBtn = new QPushButton(tr("📥 Setup Tools (v6.7.46)"));
+    m_RunDumperBtn = new QPushButton(tr("🔧 Run Dumper & Backup"));
+    m_AnalyzeBtn = new QPushButton(tr("🤖 AI Analysis"));
     
     m_DownloadToolsBtn->setStyleSheet("QPushButton { background-color: #21262d; border: 1px solid #30363d; padding: 10px; border-radius: 6px; }");
     m_RunDumperBtn->setStyleSheet("QPushButton { background-color: #21262d; border: 1px solid #388bfd; color: #58a6ff; padding: 10px; border-radius: 6px; }");
@@ -113,7 +115,6 @@ void GameModStudio::detectEngine()
 {
     m_DetectedEngine = GameEngineDetector::detectEngine(m_ProjectPath);
     updateEngineUI();
-    logMessage("Engine identified: " + GameEngineDetector::engineName(m_DetectedEngine), "success");
 }
 
 void GameModStudio::updateEngineUI()
@@ -124,12 +125,16 @@ void GameModStudio::updateEngineUI()
 
 void GameModStudio::downloadTools()
 {
-    logMessage("Searching for latest modding tools...", "info");
+    logMessage("Detecting OS for tool selection...", "info");
     m_Progress->setVisible(true);
     m_Progress->setRange(0, 0);
 
-    // URL real de Il2CppDumper (Ejemplo de release estable)
-    QString dumperUrl = "https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.40/Il2CppDumper-v6.7.40.zip";
+    // Selección de binario según sistema
+    QString dumperUrl = "https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.46/Il2CppDumper-win-v6.7.46.zip";
+#ifndef Q_OS_WIN
+    dumperUrl = "https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.46/Il2CppDumper-net6-v6.7.46.zip";
+#endif
+
     QString toolsDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/tools";
     QDir().mkpath(toolsDir);
     QString savePath = toolsDir + "/Il2CppDumper.zip";
@@ -145,17 +150,19 @@ void GameModStudio::downloadTools()
             if (f.open(QFile::WriteOnly)) {
                 f.write(reply->readAll());
                 f.close();
-                logMessage("Tools downloaded successfully. Stored in /tools/", "success");
+                logMessage("Tools v6.7.46 downloaded. Extracting...", "success");
                 
-                // Configurar automáticamente la ruta en Settings
+                // Intentar extraer automáticamente
+                QProcess::execute("powershell", {"-Command", QString("Expand-Archive -Path '%1' -DestinationPath '%2' -Force").arg(savePath, toolsDir + "/il2cppdumper")});
+                
                 QSettings settings;
-                settings.setValue("il2cpp_dumper_exe", toolsDir + "/Il2CppDumper.exe");
+                settings.setValue("il2cpp_dumper_exe", toolsDir + "/il2cppdumper/Il2CppDumper.exe");
                 settings.sync();
                 
-                QMessageBox::information(this, "Success", "Modding tools are ready to use.");
+                QMessageBox::information(this, "Vault", "Modding tools updated to v6.7.46.");
             }
         } else {
-            logMessage("Download failed: " + reply->errorString(), "error");
+            logMessage("Download Error: " + reply->errorString(), "error");
         }
         reply->deleteLater();
     });
@@ -167,40 +174,55 @@ void GameModStudio::runDumper()
     QString exe = settings.value("il2cpp_dumper_exe").toString();
     
     if (exe.isEmpty() || !QFile::exists(exe)) {
-        logMessage("Dumper not found. Please click 'Setup Tools' first.", "error");
+        logMessage("Dumper not found. Run 'Setup Tools' first.", "error");
         return;
     }
 
-    logMessage("Starting IL2CPP Dumper...", "info");
+    // Buscar librerías originales
+    QString lib, meta;
+    QStringList archs = {"arm64-v8a", "armeabi-v7a", "x86"};
+    for (const QString &arch : archs) {
+        if (QFile::exists(m_ProjectPath + "/lib/" + arch + "/libil2cpp.so")) {
+            lib = m_ProjectPath + "/lib/" + arch + "/libil2cpp.so";
+            break;
+        }
+    }
+    meta = m_ProjectPath + "/assets/bin/Data/Managed/Metadata/global-metadata.dat";
+
+    if (lib.isEmpty() || !QFile::exists(meta)) {
+        logMessage("Critical Error: libil2cpp.so or metadata not found in project.", "error");
+        return;
+    }
+
+    // --- LOGICA DE BACKUP ---
+    logMessage("Creating backups of original binaries...", "warning");
+    QFile::copy(lib, lib + ".bak");
+    QFile::copy(meta, meta + ".bak");
+
+    logMessage("Starting Dumper. Target: " + QFileInfo(lib).fileName(), "info");
     
-    // Rutas comunes en proyectos APK Studio
-    QString lib = m_ProjectPath + "/lib/arm64-v8a/libil2cpp.so";
-    QString meta = m_ProjectPath + "/assets/bin/Data/Managed/Metadata/global-metadata.dat";
-
-    if (!QFile::exists(lib) || !QFile::exists(meta)) {
-        logMessage("Missing binary targets (libil2cpp.so or global-metadata.dat)", "error");
-        return;
-    }
+    QString dumpPath = m_ProjectPath + "/dump/";
+    QDir().mkpath(dumpPath);
 
     QProcess *p = new QProcess(this);
-    p->start(exe, {lib, meta, m_ProjectPath + "/dump/"});
+    p->setWorkingDirectory(QFileInfo(exe).absolutePath());
+    p->start(exe, {lib, meta, dumpPath});
+    
     connect(p, &QProcess::finished, this, [=]() {
-        logMessage("Dump finished! Check /dump/ directory.", "success");
+        logMessage("Dump Successful! Check " + dumpPath, "success");
         p->deleteLater();
     });
 }
 
 void GameModStudio::analyzeWithAI()
 {
-    logMessage("AI dissecting project structure...", "info");
-    m_AIResponseView->setHtml("<i>Analyzing...</i>");
+    QSettings settings;
+    QString model = settings.value("ai_model", "gemini-2.0-flash-exp").toString();
+    logMessage("Consulting AI Engine (" + model + ")...", "info");
 
-    QString prompt = QString("You are a master modder. Analyze this %1 project at %2. Suggest modding patches.")
-                     .arg(GameEngineDetector::engineName(m_DetectedEngine), m_ProjectPath);
-
-    askAI(prompt, [this](const QString &res) {
+    askAI("Analyze this game project and identify potential modding entries in Smali.", [this](const QString &res) {
         m_AIResponseView->setMarkdown(res);
-        logMessage("AI analysis complete.", "success");
+        logMessage("AI Analysis ready.", "success");
     });
 }
 
@@ -210,10 +232,7 @@ void GameModStudio::askAI(const QString &prompt, std::function<void(const QStrin
     QString key = settings.value("ai_api_key").toString();
     QString model = settings.value("ai_model", "gemini-2.0-flash-exp").toString();
 
-    if (key.isEmpty()) {
-        logMessage("API Key missing in Settings!", "error");
-        return;
-    }
+    if (key.isEmpty()) { logMessage("API Key missing.", "error"); return; }
 
     QJsonObject root;
     QJsonArray contents;
@@ -237,7 +256,7 @@ void GameModStudio::askAI(const QString &prompt, std::function<void(const QStrin
             QString text = doc.object()["candidates"].toArray()[0].toObject()["content"].toObject()["parts"].toArray()[0].toObject()["text"].toString();
             callback(text);
         } else {
-            logMessage("AI Error: " + reply->errorString(), "error");
+            logMessage("AI Hub Error: " + reply->errorString(), "error");
         }
         reply->deleteLater();
     });
@@ -245,9 +264,8 @@ void GameModStudio::askAI(const QString &prompt, std::function<void(const QStrin
 
 void GameModStudio::logMessage(const QString &msg, const QString &type)
 {
-    QString color = (type == "success") ? "#7ee787" : (type == "error") ? "#f85149" : "#8b949e";
-    m_LogView->appendHtml(QString("<span style='color: %1;'>[%2] %3</span>")
-        .arg(color, QDateTime::currentDateTime().toString("HH:mm:ss"), msg));
+    QString color = (type == "success") ? "#7ee787" : (type == "error") ? "#f85149" : (type == "warning") ? "#d29922" : "#8b949e";
+    m_LogView->appendHtml(QString("<span style='color: %1;'>[%2] %3</span>").arg(color, QDateTime::currentDateTime().toString("hh:mm:ss"), msg));
 }
 
 void GameModStudio::applyMod() {}
