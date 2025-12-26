@@ -1601,6 +1601,13 @@ void AdvancedCodeEditor::selectLine()
     setTextCursor(cursor);
 }
 
+void AdvancedCodeEditor::selectAll()
+{
+    QTextCursor cursor = textCursor();
+    cursor.select(QTextCursor::Document);
+    setTextCursor(cursor);
+}
+
 void AdvancedCodeEditor::joinLines()
 {
     QTextCursor cursor = textCursor();

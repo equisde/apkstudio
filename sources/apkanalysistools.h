@@ -2,10 +2,13 @@
 #define APKANALYSISTOOLS_H
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -14,6 +17,7 @@
 #include <QTextEdit>
 #include <QTreeWidget>
 #include <QWidget>
+#include <functional>
 
 // APK Info Dialog - Shows package info, version, permissions
 class ApkInfoDialog : public QDialog
@@ -296,7 +300,7 @@ private:
     QProgressBar *m_ObfuscationLevel;
 };
 
-// SSL Pinning Analyzer & Unpinner
+// SSL Pinning Analyzer & Unpinner with AI Enhancement
 class SSLPinningDialog : public QDialog
 {
     Q_OBJECT
@@ -309,6 +313,9 @@ private slots:
     void unpinSelected();
     void addCustomCert();
     void exportCertTemplate();
+    void aiAnalyzePinning();
+    void aiGenerateBypass();
+    void aiExplainPinning();
     
 private:
     struct PinningLocation {
@@ -318,6 +325,7 @@ private:
         QString originalCode;
         QString description;
         bool canUnpin;
+        QString aiAnalysis; // AI-generated analysis
     };
     
     void searchForPinning();
@@ -328,6 +336,7 @@ private:
     QString generateTrustAllManager();
     QString generateNetworkSecurityConfig();
     void createFridaScript();
+    void askAI(const QString &prompt, std::function<void(const QString&)> callback);
     
     QString m_ProjectPath;
     QList<PinningLocation> m_PinningLocations;
@@ -336,7 +345,10 @@ private:
     QPushButton *m_UnpinAllBtn;
     QPushButton *m_UnpinSelectedBtn;
     QPushButton *m_AddCertBtn;
+    QPushButton *m_AiAnalyzeBtn;
+    QPushButton *m_AiBypassBtn;
     QProgressBar *m_Progress;
+    QNetworkAccessManager *m_NetworkManager;
 };
 
 // Certificate Injector

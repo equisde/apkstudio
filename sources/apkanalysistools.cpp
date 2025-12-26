@@ -1671,6 +1671,21 @@ SSLPinningDialog::SSLPinningDialog(const QString &projectPath, QWidget *parent)
     
     buttonLayout->addStretch();
     
+    // AI-powered buttons
+    m_AiAnalyzeBtn = new QPushButton(tr("🤖 AI Analyze"), this);
+    m_AiAnalyzeBtn->setToolTip(tr("Use AI to analyze SSL pinning implementations"));
+    m_AiAnalyzeBtn->setStyleSheet("background: #0e639c; color: white;");
+    connect(m_AiAnalyzeBtn, &QPushButton::clicked, this, &SSLPinningDialog::aiAnalyzePinning);
+    buttonLayout->addWidget(m_AiAnalyzeBtn);
+    
+    m_AiBypassBtn = new QPushButton(tr("🧠 AI Bypass"), this);
+    m_AiBypassBtn->setToolTip(tr("Generate AI-powered bypass code"));
+    m_AiBypassBtn->setStyleSheet("background: #28a745; color: white;");
+    connect(m_AiBypassBtn, &QPushButton::clicked, this, &SSLPinningDialog::aiGenerateBypass);
+    buttonLayout->addWidget(m_AiBypassBtn);
+    
+    buttonLayout->addStretch();
+    
     m_AddCertBtn = new QPushButton(tr("📜 Add Custom Cert"), this);
     connect(m_AddCertBtn, &QPushButton::clicked, this, &SSLPinningDialog::addCustomCert);
     buttonLayout->addWidget(m_AddCertBtn);
@@ -1684,6 +1699,9 @@ SSLPinningDialog::SSLPinningDialog(const QString &projectPath, QWidget *parent)
     buttonLayout->addWidget(closeBtn);
     
     layout->addLayout(buttonLayout);
+    
+    // Initialize network manager for AI calls
+    m_NetworkManager = new QNetworkAccessManager(this);
     
     // Initial analysis
     QTimer::singleShot(100, this, &SSLPinningDialog::analyzePinning);
@@ -2140,6 +2158,222 @@ Java.perform(function() {
                 tr("Frida script saved to:\n%1\n\nUsage: frida -U -f <package> -l frida_ssl_bypass.js").arg(savePath));
         }
     }
+}
+
+void SSLPinningDialog::aiAnalyzePinning()
+{
+    if (m_PinningLocations.isEmpty()) {
+        QMessageBox::information(this, tr("No Pinning Found"),
+            tr("No SSL pinning was detected. Run 'Analyze' first."));
+        return;
+    }
+    
+    QString summary;
+    for (const auto &loc : m_PinningLocations) {
+        summary += QString("File: %1\nLine: %2\nType: %3\nCode:\n%4\n\n---\n\n")
+            .arg(loc.filePath.mid(m_ProjectPath.length() + 1))
+            .arg(loc.lineNumber)
+            .arg(loc.pinType)
+            .arg(loc.originalCode.left(500));
+    }
+    
+    QString prompt = QString(
+        "You are an Android security expert. Analyze these SSL pinning implementations found in an APK:\n\n"
+        "%1\n\n"
+        "For each location, provide:\n"
+        "1. What type of pinning is used\n"
+        "2. How secure it is\n"
+        "3. Best approach to bypass it for security testing\n"
+        "4. Any vulnerabilities or weaknesses\n\n"
+        "Format your response in a clear, structured way."
+    ).arg(summary.left(10000));
+    
+    m_AiAnalyzeBtn->setEnabled(false);
+    m_AiAnalyzeBtn->setText(tr("🤖 Analyzing..."));
+    
+    askAI(prompt, [this](const QString &response) {
+        m_AiAnalyzeBtn->setEnabled(true);
+        m_AiAnalyzeBtn->setText(tr("🤖 AI Analyze"));
+        
+        if (response.isEmpty()) {
+            m_DetailsView->setHtml(tr("<h3>❌ AI Analysis Failed</h3><p>Could not get AI response. Check your API key in Settings.</p>"));
+            return;
+        }
+        
+        QString html = QString(
+            "<h3>🤖 AI SSL Pinning Analysis</h3>"
+            "<div style='white-space: pre-wrap; font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 5px;'>%1</div>"
+        ).arg(response.toHtmlEscaped());
+        
+        m_DetailsView->setHtml(html);
+    });
+}
+
+void SSLPinningDialog::aiGenerateBypass()
+{
+    int row = m_ResultsTable->currentRow();
+    QString targetCode;
+    QString pinType;
+    
+    if (row >= 0 && row < m_PinningLocations.size()) {
+        const auto &loc = m_PinningLocations[row];
+        targetCode = loc.originalCode;
+        pinType = loc.pinType;
+    } else if (!m_PinningLocations.isEmpty()) {
+        targetCode = m_PinningLocations[0].originalCode;
+        pinType = m_PinningLocations[0].pinType;
+    } else {
+        QMessageBox::information(this, tr("No Pinning Found"),
+            tr("No SSL pinning was detected. Run 'Analyze' first."));
+        return;
+    }
+    
+    QString prompt = QString(
+        "You are an Android security expert. Generate Smali code to bypass this SSL pinning implementation:\n\n"
+        "Pinning Type: %1\n"
+        "Original Code:\n```smali\n%2\n```\n\n"
+        "Generate:\n"
+        "1. Modified Smali code that bypasses the pinning\n"
+        "2. A brief explanation of what was changed\n"
+        "3. Any alternative approaches\n\n"
+        "The code should be complete and ready to use as a replacement."
+    ).arg(pinType, targetCode.left(3000));
+    
+    m_AiBypassBtn->setEnabled(false);
+    m_AiBypassBtn->setText(tr("🧠 Generating..."));
+    
+    askAI(prompt, [this](const QString &response) {
+        m_AiBypassBtn->setEnabled(true);
+        m_AiBypassBtn->setText(tr("🧠 AI Bypass"));
+        
+        if (response.isEmpty()) {
+            m_DetailsView->setHtml(tr("<h3>❌ AI Generation Failed</h3><p>Could not get AI response. Check your API key in Settings.</p>"));
+            return;
+        }
+        
+        QString html = QString(
+            "<h3>🧠 AI-Generated Bypass Code</h3>"
+            "<div style='white-space: pre-wrap; font-family: monospace; background: #1e1e1e; color: #4ec9b0; padding: 15px; border-radius: 5px;'>%1</div>"
+            "<p><b>Note:</b> Review the generated code carefully before applying. AI-generated code may need adjustments.</p>"
+        ).arg(response.toHtmlEscaped());
+        
+        m_DetailsView->setHtml(html);
+    });
+}
+
+void SSLPinningDialog::aiExplainPinning()
+{
+    QString prompt = 
+        "Explain SSL/TLS certificate pinning in Android apps:\n\n"
+        "1. What is SSL pinning and why is it used?\n"
+        "2. Common implementation methods (OkHttp CertificatePinner, Network Security Config, X509TrustManager)\n"
+        "3. How security researchers can bypass it for legitimate testing\n"
+        "4. Best practices for implementing secure pinning\n"
+        "5. Risks and considerations\n\n"
+        "Provide a comprehensive but concise explanation.";
+    
+    askAI(prompt, [this](const QString &response) {
+        if (!response.isEmpty()) {
+            QString html = QString(
+                "<h3>📚 SSL Pinning Explained</h3>"
+                "<div style='white-space: pre-wrap; padding: 15px;'>%1</div>"
+            ).arg(response.toHtmlEscaped());
+            m_DetailsView->setHtml(html);
+        }
+    });
+}
+
+void SSLPinningDialog::askAI(const QString &prompt, std::function<void(const QString&)> callback)
+{
+    QSettings settings;
+    QString provider = settings.value("ai_provider", "gemini").toString();
+    QString model = settings.value("ai_model", "gemini-2.0-flash-exp").toString();
+    QString apiKey = settings.value("ai_api_key").toString();
+    
+    if (apiKey.isEmpty()) {
+        QMessageBox::warning(this, tr("AI Not Configured"),
+            tr("Please configure your AI API key in Settings > AI Assistant."));
+        callback(QString());
+        return;
+    }
+    
+    QString endpoint;
+    QJsonObject root;
+    
+    if (provider == "gemini") {
+        endpoint = QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2")
+            .arg(model, apiKey);
+        QJsonArray contents;
+        QJsonObject content;
+        QJsonArray parts;
+        QJsonObject part;
+        part["text"] = prompt;
+        parts.append(part);
+        content["parts"] = parts;
+        contents.append(content);
+        root["contents"] = contents;
+    } else if (provider == "openai" || provider == "copilot") {
+        endpoint = "https://api.openai.com/v1/chat/completions";
+        root["model"] = model;
+        QJsonArray messages;
+        QJsonObject msg;
+        msg["role"] = "user";
+        msg["content"] = prompt;
+        messages.append(msg);
+        root["messages"] = messages;
+        root["max_tokens"] = 4096;
+    } else if (provider == "anthropic") {
+        endpoint = "https://api.anthropic.com/v1/messages";
+        root["model"] = model;
+        root["max_tokens"] = 4096;
+        QJsonArray messages;
+        QJsonObject msg;
+        msg["role"] = "user";
+        msg["content"] = prompt;
+        messages.append(msg);
+        root["messages"] = messages;
+    }
+    
+    QNetworkRequest request;
+    request.setUrl(QUrl(endpoint));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    
+    if (provider == "openai" || provider == "copilot") {
+        request.setRawHeader("Authorization", QString("Bearer %1").arg(apiKey).toUtf8());
+    } else if (provider == "anthropic") {
+        request.setRawHeader("x-api-key", apiKey.toUtf8());
+        request.setRawHeader("anthropic-version", "2023-06-01");
+    }
+    
+    QNetworkReply *reply = m_NetworkManager->post(request, QJsonDocument(root).toJson());
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, provider]() {
+        QString response;
+        
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray data = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(data);
+            
+            if (provider == "gemini") {
+                QJsonArray candidates = doc.object()["candidates"].toArray();
+                if (!candidates.isEmpty()) {
+                    response = candidates[0].toObject()["content"].toObject()["parts"].toArray()[0].toObject()["text"].toString();
+                }
+            } else if (provider == "openai" || provider == "copilot") {
+                QJsonArray choices = doc.object()["choices"].toArray();
+                if (!choices.isEmpty()) {
+                    response = choices[0].toObject()["message"].toObject()["content"].toString();
+                }
+            } else if (provider == "anthropic") {
+                QJsonArray content = doc.object()["content"].toArray();
+                if (!content.isEmpty()) {
+                    response = content[0].toObject()["text"].toString();
+                }
+            }
+        }
+        
+        reply->deleteLater();
+        callback(response);
+    });
 }
 
 // ==================== Certificate Injector ====================
