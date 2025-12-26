@@ -162,6 +162,7 @@ private slots:
     void handleToolCertInjector();
     
     // Game modding tool handlers
+    void handleToolAIGameMod();
     void handleToolUnityGame();
     void handleToolFlutterApp();
     void handleToolGameValues();

@@ -527,11 +527,12 @@ QMenuBar *MainWindow::buildMenuBar()
     
     // Game Modding submenu
     auto gameMod = tools->addMenu(tr("🎮 Game Modding"));
+    gameMod->addAction(tr("AI Game Mod Studio"), this, &MainWindow::handleToolAIGameMod, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
+    gameMod->addSeparator();
     gameMod->addAction(tr("Detect Game Engine"), this, &MainWindow::handleToolDetectEngine);
     gameMod->addSeparator();
     gameMod->addAction(tr("Unity Game Analyzer"), this, &MainWindow::handleToolUnityGame);
     gameMod->addAction(tr("Flutter App Analyzer"), this, &MainWindow::handleToolFlutterApp);
-    gameMod->addSeparator();
     gameMod->addAction(tr("Game Value Editor"), this, &MainWindow::handleToolGameValues);
     
     tools->addSeparator();
@@ -2112,40 +2113,30 @@ void MainWindow::handleToolCertInjector()
     dialog->deleteLater();
 }
 
-void MainWindow::handleToolUnityGame()
+void MainWindow::handleToolAIGameMod()
 {
     QString projectPath = getCurrentProjectPath();
     if (projectPath.isEmpty()) {
         QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
         return;
     }
-    auto dialog = new UnityGameDialog(projectPath, this);
-    dialog->exec();
-    dialog->deleteLater();
+    auto dialog = new AIGameModDialog(projectPath, this);
+    dialog->show(); // Show non-modal to allow working with files
+}
+
+void MainWindow::handleToolUnityGame()
+{
+    handleToolAIGameMod();
 }
 
 void MainWindow::handleToolFlutterApp()
 {
-    QString projectPath = getCurrentProjectPath();
-    if (projectPath.isEmpty()) {
-        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
-        return;
-    }
-    auto dialog = new FlutterAnalyzerDialog(projectPath, this);
-    dialog->exec();
-    dialog->deleteLater();
+    handleToolAIGameMod();
 }
 
 void MainWindow::handleToolGameValues()
 {
-    QString projectPath = getCurrentProjectPath();
-    if (projectPath.isEmpty()) {
-        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
-        return;
-    }
-    auto dialog = new GameValueEditorDialog(projectPath, this);
-    dialog->exec();
-    dialog->deleteLater();
+    handleToolAIGameMod();
 }
 
 void MainWindow::handleToolDetectEngine()
