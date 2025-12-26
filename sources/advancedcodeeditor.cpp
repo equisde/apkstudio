@@ -217,9 +217,25 @@ void AdvancedCodeEditor::setupHighlighter()
     QSettings settings;
     bool dark = settings.value("dark_theme", false).toBool();
     QFileInfo info(m_FilePath);
+    QString ext = info.suffix().toLower();
+    
+    // Unified mapping for syntax definitions
+    static QMap<QString, QString> langMap = {
+        {"kt", "kotlin"}, {"kts", "kotlin"},
+        {"js", "javascript"}, {"ts", "typescript"},
+        {"py", "python"}, {"pyw", "python"},
+        {"sh", "shell"}, {"bash", "shell"}, {"zsh", "shell"},
+        {"yml", "yaml"}, {"yaml", "yaml"},
+        {"h", "cpp"}, {"hpp", "cpp"}, {"c", "cpp"}, {"cpp", "cpp"},
+        {"rs", "rust"}, {"go", "go"}, {"sql", "sql"}
+    };
+    
+    QString lang = langMap.value(ext, ext);
+    if (lang == "htm") lang = "html";
+
     new ThemedSyntaxHighlighter(
         ThemedSyntaxHighlighter::theme(dark ? "dark" : "light"),
-        ThemedSyntaxHighlighter::definitions(info.suffix().toLower()),
+        ThemedSyntaxHighlighter::definitions(lang),
         document()
     );
 }

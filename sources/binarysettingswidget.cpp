@@ -69,6 +69,12 @@ QLayout *BinarySettingsWidget::buildForm()
     label->setTextInteractionFlags(Qt::TextBrowserInteraction);
     label->setTextFormat(Qt::RichText);
     layout->addRow("", child);
+
+    layout->addRow(tr("Il2CppDumper"), m_EditIl2CppDumperExe = new QLineEdit(this));
+    child = new QHBoxLayout();
+    child->addWidget(button = new QPushButton(tr("Browse"), this));
+    connect(button, &QPushButton::clicked, this, &BinarySettingsWidget::handleBrowseIl2CppDumper);
+    layout->addRow("", child);
     QSettings settings;
     auto adb = settings.value("adb_exe").toString();
     if (adb.isEmpty()) {
@@ -86,8 +92,15 @@ QLayout *BinarySettingsWidget::buildForm()
         m_EditJavaExe->setText(java);
     }
     m_EditUberApkSignerJar->setText(settings.value("uas_jar").toString());
+    m_EditIl2CppDumperExe->setText(settings.value("il2cpp_dumper_exe").toString());
     m_SpinJavaHeap->setValue(ProcessUtils::javaHeapSize());
     return layout;
+}
+
+void BinarySettingsWidget::handleBrowseIl2CppDumper()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Browse Il2CppDumper"), m_EditIl2CppDumperExe->text());
+    if (!path.isEmpty()) m_EditIl2CppDumperExe->setText(QDir::toNativeSeparators(path));
 }
 
 void BinarySettingsWidget::handleBrowseAdb()
@@ -175,5 +188,6 @@ void BinarySettingsWidget::save()
     settings.setValue("java_exe", m_EditJavaExe->text());
     settings.setValue("java_heap", m_SpinJavaHeap->value());
     settings.setValue("uas_jar", m_EditUberApkSignerJar->text());
+    settings.setValue("il2cpp_dumper_exe", m_EditIl2CppDumperExe->text());
     settings.sync();
 }

@@ -94,6 +94,7 @@ set(SOURCES
     sources/settingsdialog.cpp
     sources/signingconfigdialog.cpp
     sources/signingconfigwidget.cpp
+    sources/securitysettingswidget.cpp
     sources/sourcecodeedit.cpp
     sources/splashwindow.cpp
     sources/themedsyntaxhighlighter.cpp
@@ -130,6 +131,7 @@ set(HEADERS
     sources/settingsdialog.h
     sources/signingconfigdialog.h
     sources/signingconfigwidget.h
+    sources/securitysettingswidget.h
     sources/sourcecodeedit.h
     sources/splashwindow.h
     sources/themedsyntaxhighlighter.h
