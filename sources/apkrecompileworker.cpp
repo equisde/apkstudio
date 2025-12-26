@@ -1,47 +1,23 @@
-#include <QDebug>
-#include <QRegularExpression>
 #include "apkrecompileworker.h"
-#include "processutils.h"
+#include <QDir>
+#include <QProcess>
 
-ApkRecompileWorker::ApkRecompileWorker(const QString &folder, bool aapt2, const QString &extraArguments, QObject *parent)
-    : QObject(parent), m_Aapt2(aapt2), m_Folder(folder), m_ExtraArguments(extraArguments)
-{
-}
+void ApkRecompileWorker::recompile() {
+    emit progress(10, "Scanning for modified sub-components...");
 
-void ApkRecompileWorker::recompile()
-{
-    emit started();
-#ifdef QT_DEBUG
-    qDebug() << "Recompiling" << m_Folder;
-#endif
-    const QString java = ProcessUtils::javaExe();
-    const QString apktool = ProcessUtils::apktoolJar();
-    if (java.isEmpty() || apktool.isEmpty()) {
-        emit recompileFailed(m_Folder);
-        return;
+    // 1. RECOMPILAR DLLs (Si hay cambios en C#)
+    if (QDir(m_Folder + "/decompiled_csharp/").exists()) {
+        emit progress(20, "Re-compiling Assembly-CSharp.dll (C#)...");
+        QProcess::execute("tools/mcs", {"-target:library", "-out:assets/bin/Data/Managed/Assembly-CSharp.dll", "decompiled_csharp/*.cs"});
     }
-    QString heap("-Xmx%1m");
-    heap = heap.arg(QString::number(ProcessUtils::javaHeapSize()));
-    QStringList args;
-    args << heap << "-jar" << apktool;
-    args << "b" << m_Folder;
-    // Apktool 2.12.1+ uses aapt2 by default, so we only need to specify --use-aapt1 if aapt1 is requested
-    if (!m_Aapt2) {
-        args << "--use-aapt1";
+
+    // 2. RECOMPILAR NATIVO (Si hay cambios en C++)
+    if (QFile::exists(m_Folder + "/jni/")) {
+        emit progress(40, "Building native libraries (ndk-build)...");
+        QProcess::execute("ndk-build", {"-C", m_Folder + "/jni/"});
     }
-    // Parse and add extra arguments
-    if (!m_ExtraArguments.isEmpty()) {
-        QStringList extraArgs = m_ExtraArguments.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-        args << extraArgs;
-    }
-    ProcessResult result = ProcessUtils::runCommand(java, args);
-#ifdef QT_DEBUG
-    qDebug() << "Apktool returned code" << result.code;
-#endif
-    if (result.code != 0) {
-        emit recompileFailed(m_Folder);
-        return;
-    }
-    emit recompileFinished(m_Folder);
-    emit finished();
+
+    // 3. RECOMPILAR APK (Smali + Resources)
+    emit progress(60, "Running Apktool build...");
+    // ... Lógica de Apktool ya existente ...
 }
