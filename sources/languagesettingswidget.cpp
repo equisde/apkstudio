@@ -1,3 +1,4 @@
+#include <QApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -9,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTextStream>
@@ -167,12 +169,14 @@ void LanguageSettingsWidget::onLanguageSelected(int index)
     settings.sync();
     s_CurrentLanguage = langCode;
     
-    int btn = QMessageBox::information(this,
-                                       tr("Language"),
-                                       tr("Application language changed. You need to restart APK Studio for changes to take effect."),
-                                       tr("Restart"),
-                                       tr("OK"));
-    if (btn == 0) {
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle(tr("Language"));
+    msgBox.setText(tr("Application language changed. You need to restart APK Studio for changes to take effect."));
+    QPushButton *restartBtn = msgBox.addButton(tr("Restart"), QMessageBox::AcceptRole);
+    msgBox.addButton(QMessageBox::Ok);
+    msgBox.exec();
+    
+    if (msgBox.clickedButton() == (QAbstractButton *)restartBtn) {
         qApp->exit(60600); // CODE_RESTART
     }
 }

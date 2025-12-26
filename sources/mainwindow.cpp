@@ -325,4 +325,3 @@ void MainWindow::handleActionFile() {}
 void MainWindow::handleActionClose() {}
 void MainWindow::handleActionCloseAll() {}
 MainWindow::~MainWindow() {}
-)");
