@@ -13,6 +13,7 @@ class LanguageSettingsWidget : public QWidget
     Q_OBJECT
 public:
     explicit LanguageSettingsWidget(QWidget *parent = nullptr);
+    void save();
     
     static QMap<QString, QString> getSupportedLanguages();
     static QString getCurrentLanguage();

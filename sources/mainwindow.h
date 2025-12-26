@@ -9,6 +9,7 @@
 #include <QListView>
 #include <QLabel>
 #include <QProgressBar>
+#include <QProgressDialog>
 #include <QFileIconProvider>
 #include <QStandardItemModel>
 #include <QSortFilterProxyModel>
