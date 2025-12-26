@@ -120,6 +120,7 @@ void GameModToolDownloader::downloadAllTools(GameEngineDetector::Engine engine, 
 AIGameModDialog::AIGameModDialog(const QString &projectPath, QWidget *parent)
     : QDialog(parent), m_ProjectPath(projectPath)
 {
+    setAttribute(Qt::WA_DeleteOnClose);
     m_NetworkManager = new QNetworkAccessManager(this);
     setupUI();
     detectEngine();
@@ -127,6 +128,7 @@ AIGameModDialog::AIGameModDialog(const QString &projectPath, QWidget *parent)
 
 void AIGameModDialog::setupUI()
 {
+    qDebug() << "AIGameModDialog::setupUI() starting";
     setWindowTitle(tr("🎮 AI Game Mod Studio Pro"));
     setMinimumSize(1100, 800);
     setStyleSheet("QDialog { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; }");

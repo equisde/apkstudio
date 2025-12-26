@@ -15,99 +15,66 @@ on:
 permissions:
   contents: write
 
-# Cancel in-progress runs for the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-windows:
-    name: Build Windows
+    name: Build Windows (Fresh)
     runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Cache Qt
-        id: cache-qt
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/Qt
-          key: qt-6.10.1-windows-${{ hashFiles('.github/workflows/build.yml') }}
+          fetch-depth: 0
 
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
-          cache: true
-          dir: ${{ runner.temp }}/Qt
+          # Cache disabled for fresh environment
 
-      - name: Clean project
+      - name: Clean Environment
         run: |
           if (Test-Path build) { Remove-Item -Recurse -Force build }
+          if (Test-Path bin) { Remove-Item -Recurse -Force bin }
         shell: pwsh
 
       - name: Configure CMake
         run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -GNinja
+        env:
+          CMAKE_GENERATOR: Ninja
 
-      - name: Build (parallel)
+      - name: Build
         run: |
           cmake --build build --config Release --parallel
 
-      - name: Deploy Qt dependencies
+      - name: Deploy
         shell: pwsh
         run: |
           $env:PATH = "$env:Qt6_DIR\bin;$env:PATH"
-          $ExePath = ""
-          if (Test-Path "build\bin\Release\ApkStudio.exe") {
-            $ExePath = "build\bin\Release\ApkStudio.exe"
-          } elseif (Test-Path "build\Release\ApkStudio.exe") {
-            $ExePath = "build\Release\ApkStudio.exe"
-          } else {
-            Write-Host "Error: Executable not found"
-            Get-ChildItem -Path build -Recurse -Filter "ApkStudio.exe" -ErrorAction SilentlyContinue | Select-Object FullName
-            exit 1
-          }
-          Write-Host "Found executable at: $ExePath"
+          $ExePath = "build/bin/Release/ApkStudio.exe"
+          if (!(Test-Path $ExePath)) { $ExePath = "build/Release/ApkStudio.exe" }
           windeployqt --release --no-translations --no-opengl-sw $ExePath
 
-      - name: Create archive
+      - name: Archive
         shell: pwsh
         run: |
-          $SourceDir = ""
-          if (Test-Path "build\bin\Release") {
-            $SourceDir = "build\bin\Release"
-          } elseif (Test-Path "build\Release") {
-            $SourceDir = "build\Release"
-          } else {
-            Write-Host "Error: Release directory not found"
-            exit 1
-          }
-          Write-Host "Creating archive from: $SourceDir"
-          Compress-Archive -Path "$SourceDir\*" -DestinationPath ApkStudio-Windows-x64.zip -CompressionLevel Fastest
+          $SourceDir = "build/bin/Release"
+          if (!(Test-Path $SourceDir)) { $SourceDir = "build/Release" }
+          Compress-Archive -Path "$SourceDir\*" -DestinationPath ApkStudio-Windows-x64.zip
 
-      - name: Upload artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: ApkStudio-Windows-x64
           path: ApkStudio-Windows-x64.zip
-          retention-days: 30
-          compression-level: 0
-
-      - name: Upload to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: ApkStudio-Windows-x64.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
-    name: Build Linux
+    name: Build Linux (Fresh)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -115,110 +82,39 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgl1-mesa-dev libxkbcommon-x11-0 fuse
-
-      - name: Cache Qt
-        id: cache-qt
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/Qt
-          key: qt-6.10.1-linux-${{ hashFiles('.github/workflows/build.yml') }}
+          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 fuse ninja-build
 
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
-          cache: true
-          dir: ${{ runner.temp }}/Qt
 
-      - name: Cache linuxdeploy
-        id: cache-linuxdeploy
-        uses: actions/cache@v4
-        with:
-          path: |
-            linuxdeploy-x86_64.AppImage
-            linuxdeploy-plugin-qt-x86_64.AppImage
-            linuxdeploy-plugin-appimage-x86_64.AppImage
-          key: linuxdeploy-v1
-
-      - name: Configure CMake
+      - name: Fresh Configure & Build
         run: |
           rm -rf build
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -GNinja
+          cmake --build build --config Release
 
-      - name: Build (parallel)
+      - name: Prepare AppImage
         run: |
-          cmake --build build --config Release -j$(nproc)
-
-      - name: Install
-        run: |
-          cmake --install build --prefix install
-
-      - name: Download linuxdeploy
-        if: steps.cache-linuxdeploy.outputs.cache-hit != 'true'
-        run: |
+          mkdir -p AppDir/usr/bin
+          cp build/bin/ApkStudio AppDir/usr/bin/apkstudio
           wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
           wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
-          wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage"
+          chmod +x linuxdeploy*.AppImage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/apkstudio --plugin qt --output appimage
 
-      - name: Make linuxdeploy executable
-        run: chmod +x linuxdeploy*.AppImage
-
-      - name: Prepare AppDir
-        run: |
-          mkdir -p AppDir/usr/{bin,lib,share/applications,share/icons/hicolor/512x512/apps}
-          EXECUTABLE=""
-          for path in install/bin/ApkStudio install/bin/apkstudio build/ApkStudio build/apkstudio; do
-            if [ -f "$path" ]; then EXECUTABLE="$path"; break; fi
-          done
-          if [ -z "$EXECUTABLE" ]; then
-            echo "Error: Executable not found"
-            find . -type f -executable -name "*pk*" 2>/dev/null || true
-            exit 1
-          fi
-          echo "Found: $EXECUTABLE"
-          cp "$EXECUTABLE" AppDir/usr/bin/apkstudio
-          cp ${{ github.workspace }}/resources/apkstudio.desktop AppDir/usr/share/applications/
-          sed -i 's/^Icon=.*/Icon=apkstudio/' AppDir/usr/share/applications/apkstudio.desktop
-          cp ${{ github.workspace }}/resources/icon.png AppDir/apkstudio.png
-          cp ${{ github.workspace }}/resources/icon.png AppDir/usr/share/icons/hicolor/512x512/apps/apkstudio.png
-          chmod +x AppDir/usr/bin/apkstudio
-
-      - name: Create AppImage
-        run: |
-          export QTDIR=${{ env.QT_ROOT_DIR }}
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/apkstudio --desktop-file AppDir/usr/share/applications/apkstudio.desktop --icon-file AppDir/apkstudio.png --plugin qt --output appimage
-
-      - name: Rename AppImage if tagged
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-            [ -f ApkStudio-x86_64.AppImage ] && mv ApkStudio-x86_64.AppImage ApkStudio-${TAG_NAME}-x86_64.AppImage
-          fi
-
-      - name: Upload artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: ApkStudio-Linux-x64
           path: ApkStudio*.AppImage
-          if-no-files-found: error
-          retention-days: 30
-          compression-level: 0
-
-      - name: Upload to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: ApkStudio*.AppImage
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-macos:
-    name: Build macOS
+    name: Build macOS (Fresh)
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -226,83 +122,24 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Cache Qt
-        id: cache-qt
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/Qt
-          key: qt-6.10.1-macos-${{ hashFiles('.github/workflows/build.yml') }}
-
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
-          cache: true
-          dir: ${{ runner.temp }}/Qt
 
-      - name: Set Qt directory
-        run: |
-          QT_DIR="${{ env.Qt6_DIR }}"
-          if [ -z "$QT_DIR" ]; then QT_DIR="${{ env.Qt_DIR }}"; fi
-          if [ -z "$QT_DIR" ] || [ ! -d "$QT_DIR" ]; then
-            QT_CONFIG=$(find "$HOME" "$RUNNER_WORKSPACE" "/Users/runner" -name "Qt6Config.cmake" -type f 2>/dev/null | head -1)
-            [ -n "$QT_CONFIG" ] && QT_DIR=$(dirname "$QT_CONFIG" | xargs dirname | xargs dirname | xargs dirname)
-          fi
-          [ -z "$QT_DIR" ] || [ ! -d "$QT_DIR" ] && { echo "Error: Qt not found"; exit 1; }
-          echo "QT_DIR=$QT_DIR" >> $GITHUB_ENV
-
-      - name: Configure CMake
+      - name: Fresh Build
         run: |
           rm -rf build
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.QT_DIR }}"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}" -GNinja
+          cmake --build build --config Release
 
-      - name: Build (parallel)
-        run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
-
-      - name: Deploy Qt frameworks
+      - name: Bundle
         run: |
-          APP_BUNDLE="build/bin/ApkStudio.app"
-          [ ! -d "$APP_BUNDLE" ] && { echo "Error: App not found"; exit 1; }
-          MACDEPLOYQT="${{ env.QT_DIR }}/bin/macdeployqt"
-          [ ! -f "$MACDEPLOYQT" ] && MACDEPLOYQT=$(find "${{ env.QT_DIR }}" -name "macdeployqt" -type f 2>/dev/null | head -1)
-          [ -z "$MACDEPLOYQT" ] && { echo "Error: macdeployqt not found"; exit 1; }
-          chmod +x "$MACDEPLOYQT"
-          "$MACDEPLOYQT" "$APP_BUNDLE" -always-overwrite
+          ${{ env.Qt6_DIR }}/bin/macdeployqt build/bin/ApkStudio.app -dmg
+          mv build/bin/ApkStudio.dmg ApkStudio-macOS.dmg
 
-      - name: Install create-dmg
-        run: brew install create-dmg
-
-      - name: Create DMG
-        run: |
-          APP_PATH="build/bin/ApkStudio.app"
-          DMG_NAME="ApkStudio-macOS-x64.dmg"
-          [ ! -d "$APP_PATH" ] && { echo "Error: App not found"; exit 1; }
-          xattr -cr "$APP_PATH"
-          codesign --force --deep --sign - "$APP_PATH" || true
-          mkdir -p dmg_temp
-          cp -R "$APP_PATH" "dmg_temp/APK Studio.app"
-          xattr -cr "dmg_temp/APK Studio.app"
-          codesign --force --deep --sign - "dmg_temp/APK Studio.app" || true
-          ICON_PATH="$APP_PATH/Contents/Resources/icon.icns"
-          CREATE_DMG_OPTS="--volname 'APK Studio' --window-pos 200 120 --window-size 600 400 --icon-size 100 --icon 'APK Studio.app' 150 190 --hide-extension 'APK Studio.app' --app-drop-link 450 190"
-          [ -f "$ICON_PATH" ] && CREATE_DMG_OPTS="--volicon '$ICON_PATH' $CREATE_DMG_OPTS"
-          eval "create-dmg $CREATE_DMG_OPTS '$DMG_NAME' dmg_temp/"
-          [ -f "$DMG_NAME" ] && echo "DMG created: $DMG_NAME" || { echo "DMG creation failed"; exit 1; }
-
-      - name: Upload artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: ApkStudio-macOS-x64
-          path: ApkStudio-macOS-x64.dmg
-          if-no-files-found: error
-          retention-days: 30
-          compression-level: 0
-
-      - name: Upload to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: ApkStudio-macOS-x64.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: ApkStudio-macOS.dmg

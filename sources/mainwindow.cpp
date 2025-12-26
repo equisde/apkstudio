@@ -527,7 +527,9 @@ QMenuBar *MainWindow::buildMenuBar()
     
     // Game Modding submenu
     auto gameMod = tools->addMenu(tr("🎮 Game Modding"));
-    gameMod->addAction(tr("AI Game Mod Studio"), this, &MainWindow::handleToolAIGameMod, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
+    auto modAction = gameMod->addAction(QIcon(":/icons/icons8/icons8-hammer-48.png"), tr("AI Game Mod Studio"), this, &MainWindow::handleToolAIGameMod);
+    modAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
+    modAction->setShortcutContext(Qt::WindowShortcut);
     gameMod->addSeparator();
     gameMod->addAction(tr("Detect Game Engine"), this, &MainWindow::handleToolDetectEngine);
     gameMod->addSeparator();
@@ -2115,11 +2117,14 @@ void MainWindow::handleToolCertInjector()
 
 void MainWindow::handleToolAIGameMod()
 {
+    qDebug() << "MainWindow::handleToolAIGameMod() called";
     QString projectPath = getCurrentProjectPath();
     if (projectPath.isEmpty()) {
+        qDebug() << "No project path found, showing warning";
         QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
         return;
     }
+    qDebug() << "Opening AIGameModDialog for project:" << projectPath;
     auto dialog = new AIGameModDialog(projectPath, this);
     dialog->show(); // Show non-modal to allow working with files
 }
