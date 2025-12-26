@@ -30,6 +30,8 @@
 #include <QTreeWidgetItem>
 #include <QUrl>
 #include "adbinstallworker.h"
+#include "antisplitdialog.h"
+#include "antisplitworker.h"
 #include "apkdecompiledialog.h"
 #include "apkdecompileworker.h"
 #include "apkrecompileworker.h"
@@ -370,6 +372,8 @@ QMenuBar *MainWindow::buildMenuBar()
     m_ActionInstall1->setEnabled(false);
     project->addSeparator();
     project->addAction(tr("Install framework"), this, &MainWindow::handleActionInstallFramework);
+    auto tools = menubar->addMenu(tr("Tools"));
+    tools->addAction(tr("AntiSplit (Merge APKs)"), this, &MainWindow::handleActionAntiSplit);
     auto help = menubar->addMenu(tr("Help"));
     help->addAction(tr("About"), this, &MainWindow::handleActionAbout);
     help->addAction(tr("Documentation"), this, &MainWindow::handleActionDocumentation);
@@ -506,6 +510,32 @@ void MainWindow::handleActionAbout()
     box.setText(QString("<strong>Tag</strong>: %1<br><strong>Commit</strong>: %2").arg(GIT_TAG).arg(GIT_COMMIT_FULL));
     box.setWindowTitle(tr("About"));
     box.exec();
+}
+
+void MainWindow::handleActionAntiSplit()
+{
+    auto dialog = new AntiSplitDialog(this);
+    if (dialog->exec() == QDialog::Accepted) {
+        auto thread = new QThread();
+        auto worker = new AntiSplitWorker(dialog->inputFiles(), dialog->outputFile(), dialog->signApk());
+        worker->moveToThread(thread);
+        connect(worker, &AntiSplitWorker::mergeFailed, this, &MainWindow::handleAntiSplitFailed);
+        connect(worker, &AntiSplitWorker::mergeFinished, this, &MainWindow::handleAntiSplitFinished);
+        connect(worker, &AntiSplitWorker::mergeProgress, this, &MainWindow::handleAntiSplitProgress);
+        connect(thread, &QThread::started, worker, &AntiSplitWorker::merge);
+        connect(worker, &AntiSplitWorker::finished, thread, &QThread::quit);
+        connect(worker, &AntiSplitWorker::finished, worker, &QObject::deleteLater);
+        connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+        thread->start();
+        m_ProgressDialog = new QProgressDialog(this);
+        m_ProgressDialog->setCancelButton(nullptr);
+        m_ProgressDialog->setLabelText(tr("Merging APKs..."));
+        m_ProgressDialog->setRange(0, 100);
+        m_ProgressDialog->setWindowFlags(m_ProgressDialog->windowFlags() & ~Qt::WindowCloseButtonHint);
+        m_ProgressDialog->setWindowTitle(tr("AntiSplit"));
+        m_ProgressDialog->exec();
+    }
+    dialog->deleteLater();
 }
 
 void MainWindow::handleActionApk()
@@ -950,6 +980,29 @@ void MainWindow::handleDecompileFinished(const QString &apk, const QString &fold
 }
 
 void MainWindow::handleDecompileProgress(const int percent, const QString &message)
+{
+    m_ProgressDialog->setLabelText(message);
+    m_ProgressDialog->setValue(percent);
+}
+
+void MainWindow::handleAntiSplitFailed(const QString &error)
+{
+    m_ProgressDialog->close();
+    m_ProgressDialog->deleteLater();
+    m_StatusMessage->setText(tr("AntiSplit failed."));
+    QMessageBox::warning(this, tr("AntiSplit Failed"), error);
+}
+
+void MainWindow::handleAntiSplitFinished(const QString &outputFile)
+{
+    m_ProgressDialog->close();
+    m_ProgressDialog->deleteLater();
+    m_StatusMessage->setText(tr("AntiSplit finished."));
+    QMessageBox::information(this, tr("AntiSplit Complete"), 
+                             tr("APK files merged successfully!\n\nOutput: %1").arg(outputFile));
+}
+
+void MainWindow::handleAntiSplitProgress(const int percent, const QString &message)
 {
     m_ProgressDialog->setLabelText(message);
     m_ProgressDialog->setValue(percent);

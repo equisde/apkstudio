@@ -85,6 +85,7 @@ private:
     int findTabIndex(const QString& path);
 private slots:
     void handleActionAbout();
+    void handleActionAntiSplit();
     void handleActionApk();
     void handleActionBuild();
     void handleActionClose();
@@ -114,6 +115,9 @@ private slots:
     void handleCommandFinished(const ProcessResult &result);
     void handleCommandStarting(const QString &exe, const QStringList &args);
     void handleCursorPositionChanged();
+    void handleAntiSplitFailed(const QString &error);
+    void handleAntiSplitFinished(const QString &outputFile);
+    void handleAntiSplitProgress(const int percent, const QString &message);
     void handleDecompileFailed(const QString &apk);
     void handleDecompileFinished(const QString &apk, const QString &folder);
     void handleDecompileProgress(const int percent, const QString &message);

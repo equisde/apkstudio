@@ -29,6 +29,7 @@ Open-source, cross platform [Qt6](https://www.qt.io/) based IDE for reverse-engi
 
 - Cross platform, run on **Linux**, **Mac OS X** & **Windows**
 - Decompile/recompile/sign & install APKs
+- **AntiSplit** - Merge split APKs (base.apk + config.\*.apk) or XAPK/APKS/APKM files into a single universal APK
 - **Automatic tool download & installation** - APK Studio can automatically download and install required tools (Java, Apktool, JADX, ADB, Uber APK Signer)
 - **Framework support** - Install and use manufacturer-specific framework files (e.g., HTC, LG, Samsung) with optional tagging for decompiling and recompiling APKs
 - **Command-line APK opening** - Open APK files directly from the file system via "Open with" context menu or command-line arguments
