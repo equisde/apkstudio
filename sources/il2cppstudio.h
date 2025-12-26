@@ -23,6 +23,7 @@ private slots:
     void generateModMenu();
 
 private:
+    void setupUI();
     void logMessage(const QString &msg);
     void askAI(const QString &prompt, std::function<void(const QString&)> callback);
 

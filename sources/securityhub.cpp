@@ -68,17 +68,14 @@ void SecurityHub::setupUI() {
 
 void SecurityHub::analyzeNetworkSecurity() {
     m_AiSecurityLog->append(tr("<i>[AI] Scanning for hardcoded endpoints and certificate logic...</i>"));
-    // Implement AI prompt here...
 }
 
 void SecurityHub::analyzeTampering() {
     m_AiSecurityLog->append(tr("<i>[AI] Searching for signature checks and root detection...</i>"));
-    // Implement AI prompt here...
 }
 
 void SecurityHub::runSSLPinningBypass() {
     m_AiSecurityLog->append(tr("<i>[AI] Identifying SSL Pinning implementation...</i>"));
-    // Implement AI prompt here...
 }
 
 void SecurityHub::generateSecurityReport() {

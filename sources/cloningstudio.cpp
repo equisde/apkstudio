@@ -11,7 +11,7 @@ CloningStudio::CloningStudio(const QString &projectPath, QWidget *parent)
 
 void CloningStudio::setProjectPath(const QString &path) {
     m_ProjectPath = path;
-    m_Log->append("Project changed: " + path);
+    m_AiLog->append("Project changed: " + path);
 }
 
 void CloningStudio::setupUI() {
@@ -19,18 +19,18 @@ void CloningStudio::setupUI() {
     layout->setContentsMargins(10, 10, 10, 10);
     layout->setSpacing(15);
 
-    auto group = new QGroupBox(tr("👯 APK Cloner"));
+    auto group = new QGroupBox(tr("📦 APK Cloning & Renaming"));
     auto form = new QFormLayout(group);
 
     m_EditNewPackage = new QLineEdit();
-    m_EditNewPackage->setPlaceholderText("com.example.clone");
+    m_EditNewPackage->setPlaceholderText("com.new.package.name");
     form->addRow(tr("New Package Name:"), m_EditNewPackage);
 
     m_EditNewName = new QLineEdit();
-    m_EditNewName->setPlaceholderText("App Clone");
+    m_EditNewName->setPlaceholderText("Cloned App Name");
     form->addRow(tr("New App Name:"), m_EditNewName);
 
-    auto btnAi = new QPushButton(tr("AI Suggest Stealth Clone Config"));
+    auto btnAi = new QPushButton(tr("🤖 AI Suggest Clone Config"));
     connect(btnAi, &QPushButton::clicked, this, &CloningStudio::aiSuggestCloneConfig);
     form->addRow(btnAi);
 
@@ -38,19 +38,19 @@ void CloningStudio::setupUI() {
 
     m_AiLog = new QTextBrowser();
     m_AiLog->setStyleSheet("background-color: #1e1e1e; color: #d4d4d4;");
-    layout->addWidget(new QLabel(tr("<b>Cloning Process & AI Suggestions</b>")));
+    layout->addWidget(new QLabel(tr("<b>AI Cloning Log</b>")));
     layout->addWidget(m_AiLog);
 
-    auto btnClone = new QPushButton(tr("⚡ Generate Clone Project"));
-    btnClone->setStyleSheet("background-color: #0e639c; color: white; font-weight: bold; padding: 10px;");
+    auto btnClone = new QPushButton(tr("🚀 Generate Cloned APK"));
+    btnClone->setStyleSheet("background-color: #238636; color: white; font-weight: bold; padding: 10px;");
     connect(btnClone, &QPushButton::clicked, this, &CloningStudio::generateClone);
     layout->addWidget(btnClone);
 }
 
-void CloningStudio::aiSuggestCloneConfig() {
-    m_AiLog->append("<i>[AI] Analyzing package structure for stealth cloning...</i>");
+void CloningStudio::generateClone() {
+    m_AiLog->append("<i>Starting cloning process...</i>");
 }
 
-void CloningStudio::generateClone() {
-    QMessageBox::information(this, tr("Cloner"), tr("Cloning process started. AI is renaming resources and patching manifest..."));
+void CloningStudio::aiSuggestCloneConfig() {
+    m_AiLog->append("<i>AI suggesting clone configuration...</i>");
 }

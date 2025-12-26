@@ -21,6 +21,7 @@ private slots:
     void aiSuggestModifications();
 
 private:
+    void setupUI();
     QString m_ProjectPath;
     QTableWidget *m_ModTable;
     QTextBrowser *m_AiLog;

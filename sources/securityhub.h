@@ -21,6 +21,7 @@ private slots:
     void generateSecurityReport();
 
 private:
+    void setupUI();
     QString m_ProjectPath;
     QTextBrowser *m_AiSecurityLog;
 };

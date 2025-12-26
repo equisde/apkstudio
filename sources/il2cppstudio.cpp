@@ -10,6 +10,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QNetworkReply>
+#include <QNetworkRequest>
 
 Il2CppStudio::Il2CppStudio(const QString &projectPath, QWidget *parent)
     : QWidget(parent), m_ProjectPath(projectPath)
@@ -125,7 +126,8 @@ void Il2CppStudio::askAI(const QString &prompt, std::function<void(const QString
     contents.append(content);
     root["contents"] = contents;
 
-    QNetworkRequest req(QUrl(QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2").arg(model, key)));
+    QNetworkRequest req;
+    req.setUrl(QUrl(QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2").arg(model, key)));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
     QNetworkReply *reply = m_NetworkManager->post(req, QJsonDocument(root).toJson());

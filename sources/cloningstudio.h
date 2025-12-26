@@ -20,6 +20,7 @@ private slots:
     void aiSuggestCloneConfig();
 
 private:
+    void setupUI();
     QString m_ProjectPath;
     QLineEdit *m_EditNewPackage;
     QLineEdit *m_EditNewName;
