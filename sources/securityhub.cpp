@@ -38,7 +38,7 @@ SecurityHub::SecurityHub(const QString &projectPath, QWidget *parent)
 
     // --- Anti-Tampering Section ---
     auto tampGroup = new QGroupBox(tr("🔒 Anti-Tampering & Integrity"));
-    auto tampLayout = new QVBoxLayout(tGroup);
+    auto tampLayout = new QVBoxLayout(tampGroup);
     auto btnTamp = new QPushButton(tr("AI Scan Tamper Protections"));
     connect(btnTamp, &QPushButton::clicked, this, &SecurityHub::analyzeTampering);
     tampLayout->addWidget(btnTamp);
