@@ -213,7 +213,7 @@ void AIGameModDialog::downloadTools()
 
 void AIGameModDialog::runDumper()
 {
-    if (m_DetectedEngine != Unity) {
+    if (m_DetectedEngine != GameEngineDetector::Unity) {
         logMessage("Dumper only supports Unity games currently.", "error");
         return;
     }

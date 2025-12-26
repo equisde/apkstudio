@@ -49,6 +49,7 @@ private slots:
     
     // File Operations
     void handleActionApk();
+    void handleSplitApkOpen(const QString &bundlePath);
     void handleActionFolder();
     void handleActionFile();
     void handleActionSave();
