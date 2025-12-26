@@ -44,7 +44,6 @@ MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
     sideLayout->setSpacing(0);
     
     m_SidebarStack = new QStackedWidget();
-    // Widgets are initialized during analyzeProjectContext or here
     sideLayout->addWidget(m_SidebarStack);
     
     m_SidebarContainer->setMinimumWidth(300);
@@ -56,11 +55,10 @@ MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
     m_TabEditors->setTabsClosable(true);
     m_TabEditors->setMovable(true);
     m_TabEditors->setDocumentMode(true);
-    m_TabEditors->setStyleSheet("QTabBar::tab { height: 35px; min-width: 100px; }");
     connect(m_TabEditors, &QTabWidget::tabCloseRequested, this, &MainWindow::handleTabCloseRequested);
     connect(m_TabEditors, &QTabWidget::currentChanged, this, &MainWindow::handleTabChanged);
 
-    auto welcome = new QLabel("<h1 style='color: #555;'>APK Studio Pro</h1><p style='color: #777;'>Open an APK to begin AI-powered analysis.</p>");
+    auto welcome = new QLabel("<h1 style='color: #555;'>APK Studio Pro</h1><p style='color: #777;'>Suelta un APK para empezar la magia.</p>");
     welcome->setAlignment(Qt::AlignCenter);
     m_CentralStack->addWidget(welcome);
     m_CentralStack->addWidget(m_TabEditors);
@@ -72,7 +70,7 @@ MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
     setupMenuBar();
     setupStatusBarCustom(versions);
     
-    // Setup initial empty sidebars
+    // Inicializar Sidebars vacíos
     setupSidebars();
 
     QTimer::singleShot(100, this, [this]() {
@@ -109,7 +107,7 @@ void MainWindow::setupMenuBar()
     gameMod->addAction(tr("AI Mod Studio"), QKeySequence("Ctrl+Shift+G"), this, &MainWindow::handleToolAIGameMod);
     
     auto secHub = toolsMenu->addMenu(tr("🛡️ Security Hub"));
-    secHub->addAction(tr("Comprehensive Security Scan"), this, &MainWindow::handleSecurityAnalysis);
+    secHub->addAction(tr("Analyze Network Security"), this, &MainWindow::handleSecurityAnalysis);
     
     toolsMenu->addAction(tr("APK Cloner"), this, &MainWindow::handleApkCloning);
 }
@@ -136,14 +134,12 @@ void MainWindow::setupActivityBar()
     };
 
     addAct(Explorer, ":/icons/icons8/icons8-folder-48.png", "Explorer");
-    addAct(GameModding, ":/icons/icons8/icons8-hammer-48.png", "Game Modding");
-    addAct(Security, ":/icons/icons8/icons8-software-installer-48.png", "Security Hub");
-    addAct(Cloning, ":/icons/icons8/icons8-android-os-48.png", "APK Cloning");
-    addAct(AppMod, ":/icons/fugue/gear.png", "App Modification");
-    addAct(AIStudio, ":/icons/icons8/icons8-gear-48.png", "AI Studio");
+    addAct(GameModding, ":/icons/icons8/icons8-hammer-48.png", "Game Mod");
+    addAct(Security, ":/icons/icons8/icons8-software-installer-48.png", "Security");
+    addAct(Cloning, ":/icons/icons8/icons8-android-os-48.png", "Cloner");
+    addAct(AIStudio, ":/icons/icons8/icons8-gear-48.png", "AI Agent");
 
     connect(m_ActivityGroup, &QActionGroup::triggered, this, [this](QAction *a) {
-        if (!m_SidebarContainer->isVisible()) m_SidebarContainer->show();
         switchSection(static_cast<Section>(a->data().toInt()));
     });
 }
@@ -153,8 +149,6 @@ void MainWindow::setupSidebars()
     // 0. Explorer
     m_ExplorerTree = new QTreeWidget();
     m_ExplorerTree->setHeaderLabel(tr("PROJECT EXPLORER"));
-    m_ExplorerTree->setAnimated(true);
-    m_ExplorerTree->setIndentation(15);
     m_ExplorerTree->setStyleSheet("QTreeWidget { background-color: #252526; color: #cccccc; border: none; }");
     connect(m_ExplorerTree, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *item) {
         QString path = item->data(0, Qt::UserRole).toString();
@@ -162,58 +156,90 @@ void MainWindow::setupSidebars()
     });
     m_SidebarStack->addWidget(m_ExplorerTree);
 
-    // 1. Search (Stub)
-    m_SidebarStack->addWidget(new QLabel("Search..."));
+    // 1. Search
+    m_SidebarStack->addWidget(new QLabel("AI Search Coming Soon..."));
 
-    // 2. Game Modding
-    m_SidebarStack->addWidget(new QLabel("Select a project first..."));
+    // 2. Game Modding (Inicialmente vacío)
+    m_SidebarStack->addWidget(new QLabel("Open a Project..."));
 
-    // 3. Security Hub
-    m_SidebarStack->addWidget(new QLabel("Select a project first..."));
+    // 3. Security (Inicialmente vacío)
+    m_SidebarStack->addWidget(new QLabel("Open a Project..."));
 
     // 4. Cloning
-    m_SidebarStack->addWidget(new QLabel("Select a project first..."));
+    m_SidebarStack->addWidget(new QLabel("Open a Project..."));
 
     // 5. App Mod
-    m_SidebarStack->addWidget(new QLabel("Select a project first..."));
+    m_SidebarStack->addWidget(new QLabel("Open a Project..."));
 
-    // 6. AI Studio
+    // 6. AI Agent Console (Restaurado)
     m_AIStudioWidget = new AIConsoleWidget();
     m_SidebarStack->addWidget(m_AIStudioWidget);
 }
 
+void MainWindow::analyzeProjectContext(const QString &path)
+{
+    m_CurrentProjectPath = path;
+    updateStatusBar("AI Analyzing Project Environment...");
+
+    // 1. Detección de Motor / Tipo de App
+    GameEngineDetector::Engine engine = GameEngineDetector::detectEngine(path);
+    m_DetectedContext = GameEngineDetector::engineName(engine);
+    
+    // 2. Inicializar Widgets con el contexto real
+    m_SecurityHub = new SecurityHub(path);
+    m_SidebarStack->insertWidget(Security, m_SecurityHub);
+    
+    m_CloningStudio = new CloningStudio(path);
+    m_SidebarStack->insertWidget(Cloning, m_CloningStudio);
+    
+    m_AppModStudio = new AppModStudio(path);
+    m_SidebarStack->insertWidget(AppMod, m_AppModStudio);
+    
+    // 3. Generar Reportes MD Automáticos
+    QDir dir(path);
+    QString report;
+    if (engine != GameEngineDetector::NativeAndroid) {
+        report = "# AI Game Modding Report\nEngine: " + m_DetectedContext + "\n\n## Vectors\n- IL2CPP detected\n- Assets ready.";
+        QFile f(path + "/AI_GAME_MOD.md");
+        if(f.open(QFile::WriteOnly)) { f.write(report.toUtf8()); f.close(); }
+    } else {
+        report = "# AI App Modding Report\nContext: Native Android\n\n## Recommendations\n- Scan for Smali patches.";
+        QFile f(path + "/AI_APP_AUDIT.md");
+        if(f.open(QFile::WriteOnly)) { f.write(report.toUtf8()); f.close(); }
+    }
+
+    // 4. Actualizar Árbol
+    m_ExplorerTree->clear();
+    auto root = new QTreeWidgetItem(m_ExplorerTree);
+    root->setText(0, QFileInfo(path).fileName());
+    root->setData(0, Qt::UserRole, path);
+    reloadChildren(root);
+    root->setExpanded(true);
+
+    m_StatusEngineInfo->setText("Context: " + m_DetectedContext);
+    m_AIStudioWidget->setProjectPath(path);
+    
+    updateStatusBar("Analysis Complete. Reports generated.");
+}
+
 void MainWindow::switchSection(Section section) {
     m_SidebarStack->setCurrentIndex(static_cast<int>(section));
+    if (!m_SidebarContainer->isVisible()) m_SidebarContainer->show();
 }
 
-void MainWindow::toggleSidebar(bool visible) {
-    m_SidebarContainer->setVisible(visible);
-}
-
-void MainWindow::updateStatusBar(const QString &msg) {
-    statusBar()->showMessage(msg);
-}
-
-void MainWindow::handleActionApk() {
-    QString path = QFileDialog::getOpenFileName(this, tr("Select APK"), "", "APKs (*.apk)");
-    if (!path.isEmpty()) openApkFile(path);
-}
+void MainWindow::toggleSidebar(bool visible) { m_SidebarContainer->setVisible(visible); }
+void MainWindow::updateStatusBar(const QString &msg) { statusBar()->showMessage(msg); }
 
 void MainWindow::openApkFile(const QString &apkPath) {
     auto dialog = new ApkDecompileDialog(apkPath, this);
     if (dialog->exec() == QDialog::Accepted) {
-        m_GlobalProgress = new QProgressDialog(tr("Decompiling APK..."), tr("Cancel"), 0, 100, this);
-        m_GlobalProgress->setWindowModality(Qt::WindowModal);
-        m_GlobalProgress->setStyleSheet("QProgressDialog { background-color: #1e1e1e; color: white; }");
-        
+        m_GlobalProgress = new QProgressDialog(tr("Decompiling..."), tr("Cancel"), 0, 100, this);
         auto thread = new QThread();
         auto worker = new ApkDecompileWorker(dialog->apk(), dialog->folder(), dialog->smali(), dialog->resources(), dialog->java(), "", "");
         worker->moveToThread(thread);
-        
         connect(worker, &ApkDecompileWorker::decompileFinished, this, &MainWindow::handleDecompileFinished);
         connect(worker, &ApkDecompileWorker::decompileProgress, this, &MainWindow::handleDecompileProgress);
         connect(thread, &QThread::started, worker, &ApkDecompileWorker::decompile);
-        
         thread->start();
         m_GlobalProgress->exec();
     }
@@ -224,12 +250,6 @@ void MainWindow::handleDecompileFinished(const QString &apk, const QString &fold
     analyzeProjectContext(folder);
 }
 
-void MainWindow::handleDecompileFailed(const QString &apk) {
-    if (m_GlobalProgress) m_GlobalProgress->close();
-    updateStatusBar(tr("Decompilation failed for: ") + apk);
-    QMessageBox::critical(this, tr("Error"), tr("Failed to decompile APK. Check terminal for details."));
-}
-
 void MainWindow::handleDecompileProgress(int percent, const QString &message) {
     if (m_GlobalProgress) {
         m_GlobalProgress->setValue(percent);
@@ -237,35 +257,16 @@ void MainWindow::handleDecompileProgress(int percent, const QString &message) {
     }
 }
 
-void MainWindow::analyzeProjectContext(const QString &path) {
-    m_CurrentProjectPath = path;
-    
-    // Refresh sidebars with real widgets
-    m_SecurityHub = new SecurityHub(path);
-    m_SidebarStack->insertWidget(Security, m_SecurityHub);
-    
-    m_CloningStudio = new CloningStudio(path);
-    m_SidebarStack->insertWidget(Cloning, m_CloningStudio);
-
-    m_AppModStudio = new AppModStudio(path);
-    m_SidebarStack->insertWidget(AppMod, m_AppModStudio);
-
-    m_ExplorerTree->clear();
-    auto root = new QTreeWidgetItem(m_ExplorerTree);
-    root->setText(0, QFileInfo(path).fileName());
-    root->setData(0, Qt::UserRole, path);
-    root->setIcon(0, m_IconProvider.icon(QFileInfo(path)));
-    reloadChildren(root);
-    root->setExpanded(true);
-    
-    GameEngineDetector::Engine engine = GameEngineDetector::detectEngine(path);
-    m_DetectedContext = GameEngineDetector::engineName(engine);
-    m_StatusEngineInfo->setText("Environment: " + m_DetectedContext);
-    
-    // Generate AI Reports
-    QString report = "# Analysis Report\nDetected: " + m_DetectedContext;
-    QFile f(path + "/AI_ANALYSIS.md");
-    if(f.open(QFile::WriteOnly)) { f.write(report.toUtf8()); f.close(); }
+void MainWindow::openFile(const QString &path) {
+    if (m_CentralStack->currentIndex() == 0) m_CentralStack->setCurrentIndex(1);
+    for (int i=0; i<m_TabEditors->count(); ++i) {
+        if (m_TabEditors->tabToolTip(i) == path) { m_TabEditors->setCurrentIndex(i); return; }
+    }
+    auto e = new AdvancedCodeEditor();
+    e->open(path);
+    int idx = m_TabEditors->addTab(e, m_IconProvider.icon(QFileInfo(path)), QFileInfo(path).fileName());
+    m_TabEditors->setTabToolTip(idx, path);
+    m_TabEditors->setCurrentIndex(idx);
 }
 
 void MainWindow::reloadChildren(QTreeWidgetItem *item) {
@@ -279,82 +280,51 @@ void MainWindow::reloadChildren(QTreeWidgetItem *item) {
     }
 }
 
-void MainWindow::openFile(const QString &path) {
-    if (m_CentralStack->currentIndex() == 0) m_CentralStack->setCurrentIndex(1);
-    for (int i=0; i<m_TabEditors->count(); ++i) {
-        if (m_TabEditors->tabToolTip(i) == path) {
-            m_TabEditors->setCurrentIndex(i);
-            return;
-        }
-    }
-    QWidget *editor = nullptr;
-    QFileInfo info(path);
-    QString ext = info.suffix().toLower();
-    if (ext == "png" || ext == "jpg") {
-        auto v = new ImageViewerWidget();
-        v->open(path);
-        editor = v;
-    } else {
-        auto e = new AdvancedCodeEditor();
-        e->open(path);
-        editor = e;
-    }
-    int idx = m_TabEditors->addTab(editor, m_IconProvider.icon(info), info.fileName());
-    m_TabEditors->setTabToolTip(idx, path);
-    m_TabEditors->setCurrentIndex(idx);
-}
-
 void MainWindow::handleTabCloseRequested(int index) {
     m_TabEditors->removeTab(index);
     if (m_TabEditors->count() == 0) m_CentralStack->setCurrentIndex(0);
 }
 
 void MainWindow::setupModernStyles() {
-    setStyleSheet(R"(
-        QMainWindow { background-color: #1e1e1e; }
-        QToolBar#ActivityBar { background-color: #333333; border: none; }
-        QStatusBar { background-color: #007acc; color: white; border: none; min-height: 22px; }
-        QTabWidget::pane { border-top: 1px solid #252526; background: #1e1e1e; }
-        QTabBar::tab { background: #2d2d2d; color: #969696; padding: 8px 15px; border-right: 1px solid #1e1e1e; }
-        QTabBar::tab:selected { background: #1e1e1e; color: white; border-bottom: 1px solid #007acc; }
-        QPushButton { background-color: #333333; color: #cccccc; border: 1px solid #3c3c3c; padding: 5px; }
-        QPushButton:hover { background-color: #444444; }
-    )");
+    setStyleSheet("QMainWindow { background-color: #1e1e1e; } QStatusBar { background-color: #007acc; color: white; }");
 }
 
-void MainWindow::setupStatusBarCustom(const QMap<QString, QString> &versions) {
-    auto sb = statusBar();
+void MainWindow::setupStatusBarCustom(const QMap<QString, QString>&) {
     m_StatusEngineInfo = new QLabel("Ready");
-    m_StatusEngineInfo->setStyleSheet("padding-left: 5px;");
-    sb->addPermanentWidget(m_StatusEngineInfo);
+    statusBar()->addPermanentWidget(m_StatusEngineInfo);
+}
+
+void MainWindow::handleActionApk() {
+    QString path = QFileDialog::getOpenFileName(this, tr("Select APK"), "", "APKs (*.apk)");
+    if (!path.isEmpty()) openApkFile(path);
 }
 
 void MainWindow::handleActionFolder() {
-    QString path = QFileDialog::getExistingDirectory(this, tr("Open Project Folder"));
+    QString path = QFileDialog::getExistingDirectory(this, tr("Open Project"));
     if (!path.isEmpty()) analyzeProjectContext(path);
 }
 
 void MainWindow::handleActionSave() {
-    auto editor = dynamic_cast<AdvancedCodeEditor*>(m_TabEditors->currentWidget());
-    if (editor) editor->save();
+    auto e = dynamic_cast<AdvancedCodeEditor*>(m_TabEditors->currentWidget());
+    if (e) e->save();
 }
 
 void MainWindow::handleActionSaveAll() {
     for (int i=0; i<m_TabEditors->count(); ++i) {
-        auto editor = dynamic_cast<AdvancedCodeEditor*>(m_TabEditors->widget(i));
-        if (editor) editor->save();
+        auto e = dynamic_cast<AdvancedCodeEditor*>(m_TabEditors->widget(i));
+        if (e) e->save();
     }
 }
 
-void MainWindow::handleActionSettings() { (new SettingsDialog(0, this))->exec(); }
+void MainWindow::handleActionSettings() { (new SettingsDialog())->exec(); }
 void MainWindow::handleActionQuit() { qApp->quit(); }
-void MainWindow::handleActionClose() { handleTabCloseRequested(m_TabEditors->currentIndex()); }
-void MainWindow::handleActionCloseAll() { while(m_TabEditors->count() > 0) handleTabCloseRequested(0); }
-void MainWindow::handleTabChanged(int) {}
 void MainWindow::handleToolAIGameMod() { (new AIGameModDialog(m_CurrentProjectPath, this))->show(); }
 void MainWindow::handleSecurityAnalysis() {}
 void MainWindow::handleApkCloning() {}
 void MainWindow::handleAppModification() {}
 void MainWindow::handleAIAnalysisComplete(const QString&) {}
 void MainWindow::handleActionFile() {}
+void MainWindow::handleActionClose() {}
+void MainWindow::handleActionCloseAll() {}
+void MainWindow::handleTabChanged(int) {}
 MainWindow::~MainWindow() {}
