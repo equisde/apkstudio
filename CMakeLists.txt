@@ -85,6 +85,7 @@ set(SOURCES
     sources/hexedit.cpp
     sources/imageviewerwidget.cpp
     sources/mainwindow.cpp
+    sources/markdownviewerwidget.cpp
     sources/processutils.cpp
     sources/settingsdialog.cpp
     sources/signingconfigdialog.cpp
@@ -108,6 +109,7 @@ set(HEADERS
     sources/apkrecompileworker.h
     sources/apksignworker.h
     sources/appearancesettingswidget.h
+    sources/markdownviewerwidget.h
     sources/binarysettingswidget.h
     sources/devicelistworker.h
     sources/deviceselectiondialog.h

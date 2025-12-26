@@ -35,6 +35,7 @@
 #include "findreplacedialog.h"
 #include "hexedit.h"
 #include "imageviewerwidget.h"
+#include "markdownviewerwidget.h"
 #include "tooldownloaddialog.h"
 #include "tooldownloadworker.h"
 #include "versionresolveworker.h"
@@ -51,7 +52,8 @@
 #define COLOR_ERROR 0xfb0a2a
 
 #define IMAGE_EXTENSIONS "gif|jpeg|jpg|png"
-#define TEXT_EXTENSIONS "java|html|properties|smali|txt|xml|yaml|yml"
+#define MARKDOWN_EXTENSIONS "md|markdown"
+#define TEXT_EXTENSIONS "java|html|properties|smali|txt|xml|yaml|yml|json|kt|kts|gradle|css|js"
 
 #define URL_CONTRIBUTE "https://github.com/vaibhavpandeyvpz/apkstudio"
 #define URL_DOCUMENTATION "https://vaibhavpandey.com/apkstudio/"
@@ -488,12 +490,15 @@ int MainWindow::findTabIndex(const QString &path)
         auto edit = dynamic_cast<SourceCodeEdit *>(widget);
         auto hex = dynamic_cast<HexEdit *>(widget);
         auto viewer = dynamic_cast<ImageViewerWidget *>(widget);
+        auto mdViewer = dynamic_cast<MarkdownViewerWidget *>(widget);
         if (edit) {
             path2 = edit->filePath();
         } else if (hex) {
             path2 = hex->filePath();
         } else if (viewer) {
             path2 = viewer->filePath();
+        } else if (mdViewer) {
+            path2 = mdViewer->filePath();
         }
         if (QString::compare(path, path2) == 0) {
             return i;
@@ -1210,12 +1215,15 @@ void MainWindow::handleTabChanged(const int index)
     auto edit = dynamic_cast<SourceCodeEdit *>(widget);
     auto hex = dynamic_cast<HexEdit *>(widget);
     auto viewer = dynamic_cast<ImageViewerWidget *>(widget);
+    auto mdViewer = dynamic_cast<MarkdownViewerWidget *>(widget);
     if (edit) {
         path = edit->filePath();
     } else if (hex) {
         path = hex->filePath();
     } else if (viewer) {
         path = viewer->filePath();
+    } else if (mdViewer) {
+        path = mdViewer->filePath();
     }
     // Block signals to prevent selection change handler from firing
     QSignalBlocker blocker(m_ListOpenFiles);
@@ -1281,12 +1289,15 @@ void MainWindow::handleTabCloseRequested(const int index)
     auto edit = dynamic_cast<SourceCodeEdit *>(widget);
     auto hex = dynamic_cast<HexEdit *>(widget);
     auto viewer = dynamic_cast<ImageViewerWidget *>(widget);
+    auto mdViewer = dynamic_cast<MarkdownViewerWidget *>(widget);
     if (edit) {
         path = edit->filePath();
     } else if (hex) {
         path = hex->filePath();
     } else if (viewer) {
         path = viewer->filePath();
+    } else if (mdViewer) {
+        path = mdViewer->filePath();
     }
     // Block signals during model update to prevent selection change errors
     QSignalBlocker blocker(m_ListOpenFiles);
@@ -1450,11 +1461,16 @@ void MainWindow::openFile(const QString &path)
     }
     QFileInfo info(path);
     QWidget *widget;
-    const QString extension = info.suffix();
+    const QString extension = info.suffix().toLower();
+    
     if (!extension.isEmpty() && QString(IMAGE_EXTENSIONS).contains(extension, Qt::CaseInsensitive)) {
         auto viewer = new ImageViewerWidget(this);
         viewer->open(path);
         viewer->zoomReset();
+        widget = viewer;
+    } else if (!extension.isEmpty() && QString(MARKDOWN_EXTENSIONS).contains(extension, Qt::CaseInsensitive)) {
+        auto viewer = new MarkdownViewerWidget(this);
+        viewer->open(path);
         widget = viewer;
     } else if (!extension.isEmpty() && QString(TEXT_EXTENSIONS).contains(extension, Qt::CaseInsensitive)) {
         auto editor = new SourceCodeEdit(this);

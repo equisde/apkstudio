@@ -1,11 +1,17 @@
 #include <QApplication>
+#include <QContextMenuEvent>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMessageBox>
 #include <QPainter>
 #include <QScrollBar>
 #include <QSettings>
 #include <QShortcut>
 #include <QTextBlock>
 #include <QTextStream>
+#include <QToolTip>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QStringConverter>
 #endif
@@ -16,20 +22,22 @@
 #define TABS_TO_SPACES true
 
 SourceCodeEdit::SourceCodeEdit(QWidget *parent)
-    : QPlainTextEdit(parent)
+    : QPlainTextEdit(parent), m_NetworkManager(nullptr)
 {
     m_Sidebar = new SourceCodeSidebarWidget(this);
+    m_NetworkManager = new QNetworkAccessManager(this);
+    
     QSettings settings;
     QFont font;
 #ifdef Q_OS_WIN
-    font.setFamily(settings.value("editor_font", "Courier New").toString());
+    font.setFamily(settings.value("editor_font", "Cascadia Code").toString());
 #elif defined(Q_OS_MACOS)
-    font.setFamily(settings.value("editor_font", "Monaco").toString());
+    font.setFamily(settings.value("editor_font", "SF Mono").toString());
 #else
-    font.setFamily(settings.value("editor_font", "Ubuntu Mono").toString());
+    font.setFamily(settings.value("editor_font", "JetBrains Mono").toString());
 #endif
     font.setFixedPitch(true);
-    font.setPointSize(settings.value("editor_font_size", 10).toInt());
+    font.setPointSize(settings.value("editor_font_size", 11).toInt());
     font.setStyleHint(QFont::Monospace);
     const bool whitespaces = settings.value("editor_whitespaces", false).toBool();
     if (whitespaces) {
@@ -42,6 +50,11 @@ SourceCodeEdit::SourceCodeEdit(QWidget *parent)
     setFont(font);
     setTabChangesFocus(false);
     setWordWrapMode(QTextOption::NoWrap);
+    
+    // Set tab width
+    QFontMetrics metrics(font);
+    setTabStopDistance(TAB_STOP_WIDTH * metrics.horizontalAdvance(' '));
+    
     connect(this, &QPlainTextEdit::cursorPositionChanged, this, &SourceCodeEdit::handleCursorPositionChanged);
     connect(this, &QPlainTextEdit::blockCountChanged, this, &SourceCodeEdit::handleBlockCountChanged);
     connect(this, &QPlainTextEdit::textChanged, this, &SourceCodeEdit::handleTextChanged);
@@ -374,10 +387,13 @@ void SourceCodeEdit::open(const QString &path)
 {
     QFile file(path);
     if (file.open(QFile::ReadOnly | QFile::Text)) {
-        auto content = QString::fromUtf8(file.readAll());
+        QByteArray rawData = file.readAll();
+        detectEncoding(rawData);
+        auto content = QString::fromUtf8(rawData);
         setPlainText(content);
         QFileInfo info(path);
         QString extension = info.suffix().toLower();
+        detectFileType(path);
         QSettings settings;
         const bool dark = settings.value("dark_theme", false).toBool();
         new ThemedSyntaxHighlighter(
@@ -556,4 +572,340 @@ QSize SourceCodeSidebarWidget::sizeHint() const
 void SourceCodeSidebarWidget::wheelEvent(QWheelEvent *e)
 {
     QApplication::sendEvent(m_Edit->viewport(), e);
+}
+
+// === AI-Powered Features ===
+
+QString SourceCodeEdit::fileType() const
+{
+    return m_FileType;
+}
+
+void SourceCodeEdit::detectFileType(const QString &path)
+{
+    QFileInfo info(path);
+    QString ext = info.suffix().toLower();
+    
+    if (ext == "smali") m_FileType = "smali";
+    else if (ext == "java") m_FileType = "java";
+    else if (ext == "xml") m_FileType = "xml";
+    else if (ext == "json") m_FileType = "json";
+    else if (ext == "yml" || ext == "yaml") m_FileType = "yaml";
+    else if (ext == "properties") m_FileType = "properties";
+    else if (ext == "txt") m_FileType = "text";
+    else if (ext == "md" || ext == "markdown") m_FileType = "markdown";
+    else if (ext == "html" || ext == "htm") m_FileType = "html";
+    else if (ext == "css") m_FileType = "css";
+    else if (ext == "js") m_FileType = "javascript";
+    else if (ext == "kt" || ext == "kts") m_FileType = "kotlin";
+    else if (ext == "gradle") m_FileType = "gradle";
+    else m_FileType = "text";
+}
+
+void SourceCodeEdit::detectEncoding(const QByteArray &data)
+{
+    // Simple BOM detection
+    if (data.startsWith("\xEF\xBB\xBF")) {
+        m_Encoding = "UTF-8-BOM";
+    } else if (data.startsWith("\xFF\xFE")) {
+        m_Encoding = "UTF-16LE";
+    } else if (data.startsWith("\xFE\xFF")) {
+        m_Encoding = "UTF-16BE";
+    } else {
+        m_Encoding = "UTF-8";
+    }
+}
+
+void SourceCodeEdit::contextMenuEvent(QContextMenuEvent *event)
+{
+    QMenu *menu = createStandardContextMenu();
+    
+    QSettings settings;
+    bool aiEnabled = settings.value("ai_enabled", false).toBool();
+    QString apiKey = settings.value("ai_api_key").toString();
+    
+    if (aiEnabled && !apiKey.isEmpty()) {
+        menu->addSeparator();
+        
+        QMenu *aiMenu = menu->addMenu(tr("🤖 AI Assistant"));
+        
+        QAction *explainAction = aiMenu->addAction(tr("Explain Selected Code"));
+        explainAction->setEnabled(textCursor().hasSelection());
+        connect(explainAction, &QAction::triggered, this, &SourceCodeEdit::aiExplainCode);
+        
+        QAction *fixAction = aiMenu->addAction(tr("Fix Issues in Selection"));
+        fixAction->setEnabled(textCursor().hasSelection());
+        connect(fixAction, &QAction::triggered, this, &SourceCodeEdit::aiFixCode);
+        
+        QAction *issuesAction = aiMenu->addAction(tr("Find Security Issues"));
+        connect(issuesAction, &QAction::triggered, this, &SourceCodeEdit::aiFindIssues);
+        
+        QAction *optimizeAction = aiMenu->addAction(tr("Optimize Code"));
+        optimizeAction->setEnabled(textCursor().hasSelection());
+        connect(optimizeAction, &QAction::triggered, this, &SourceCodeEdit::aiOptimizeCode);
+        
+        QAction *commentsAction = aiMenu->addAction(tr("Add Comments"));
+        commentsAction->setEnabled(textCursor().hasSelection());
+        connect(commentsAction, &QAction::triggered, this, &SourceCodeEdit::aiAddComments);
+        
+        aiMenu->addSeparator();
+        
+        QAction *convertAction = aiMenu->addAction(tr("Convert Format..."));
+        convertAction->setEnabled(textCursor().hasSelection());
+        connect(convertAction, &QAction::triggered, this, &SourceCodeEdit::aiConvertFormat);
+    }
+    
+    menu->exec(event->globalPos());
+    delete menu;
+}
+
+void SourceCodeEdit::aiExplainCode()
+{
+    QString selected = textCursor().selectedText();
+    if (selected.isEmpty()) return;
+    
+    // Replace paragraph separators with newlines
+    selected.replace(QChar::ParagraphSeparator, '\n');
+    
+    QString prompt = QString(
+        "Explain this %1 code in detail. What does it do? "
+        "Break down each significant part:\n\n```%1\n%2\n```"
+    ).arg(m_FileType, selected);
+    
+    askAI(prompt, selected);
+}
+
+void SourceCodeEdit::aiFixCode()
+{
+    QString selected = textCursor().selectedText();
+    if (selected.isEmpty()) return;
+    
+    selected.replace(QChar::ParagraphSeparator, '\n');
+    
+    QString prompt = QString(
+        "Fix any bugs, errors, or issues in this %1 code. "
+        "Return ONLY the corrected code without explanations:\n\n```%1\n%2\n```"
+    ).arg(m_FileType, selected);
+    
+    askAI(prompt, selected);
+}
+
+void SourceCodeEdit::aiFindIssues()
+{
+    QString content = toPlainText();
+    if (content.length() > 10000) {
+        content = content.left(10000) + "\n... (truncated)";
+    }
+    
+    QString prompt = QString(
+        "Analyze this %1 file for security vulnerabilities, bugs, and potential issues. "
+        "List each issue with its line number (if possible), severity (HIGH/MEDIUM/LOW), and how to fix it:\n\n"
+        "```%1\n%2\n```"
+    ).arg(m_FileType, content);
+    
+    askAI(prompt, content);
+}
+
+void SourceCodeEdit::aiOptimizeCode()
+{
+    QString selected = textCursor().selectedText();
+    if (selected.isEmpty()) return;
+    
+    selected.replace(QChar::ParagraphSeparator, '\n');
+    
+    QString prompt = QString(
+        "Optimize this %1 code for better performance and readability. "
+        "Return ONLY the optimized code without explanations:\n\n```%1\n%2\n```"
+    ).arg(m_FileType, selected);
+    
+    askAI(prompt, selected);
+}
+
+void SourceCodeEdit::aiAddComments()
+{
+    QString selected = textCursor().selectedText();
+    if (selected.isEmpty()) return;
+    
+    selected.replace(QChar::ParagraphSeparator, '\n');
+    
+    QString prompt = QString(
+        "Add helpful comments to this %1 code explaining what each section does. "
+        "Return the code with comments added:\n\n```%1\n%2\n```"
+    ).arg(m_FileType, selected);
+    
+    askAI(prompt, selected);
+}
+
+void SourceCodeEdit::aiConvertFormat()
+{
+    QString selected = textCursor().selectedText();
+    if (selected.isEmpty()) return;
+    
+    selected.replace(QChar::ParagraphSeparator, '\n');
+    
+    QString prompt = QString(
+        "Convert this %1 code/data to a different format. "
+        "If it's JSON, convert to YAML. If YAML, convert to JSON. "
+        "If it's Java, convert to Kotlin. If smali, explain what the Java equivalent would be. "
+        "Return ONLY the converted content:\n\n```%1\n%2\n```"
+    ).arg(m_FileType, selected);
+    
+    askAI(prompt, selected);
+}
+
+void SourceCodeEdit::askAI(const QString &prompt, const QString &context)
+{
+    Q_UNUSED(context)
+    
+    QSettings settings;
+    QString provider = settings.value("ai_provider", "gemini").toString();
+    QString model = settings.value("ai_model", "gemini-2.0-flash-exp").toString();
+    QString apiKey = settings.value("ai_api_key").toString();
+    
+    if (apiKey.isEmpty()) {
+        QMessageBox::warning(this, tr("AI Not Configured"), 
+            tr("Please configure your AI API key in Settings > AI Assistant."));
+        return;
+    }
+    
+    // Build request
+    QString endpoint;
+    QJsonObject root;
+    
+    if (provider == "gemini") {
+        endpoint = QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2")
+            .arg(model, apiKey);
+        
+        QJsonArray contents;
+        QJsonObject content;
+        QJsonArray parts;
+        QJsonObject part;
+        part["text"] = prompt;
+        parts.append(part);
+        content["parts"] = parts;
+        contents.append(content);
+        root["contents"] = contents;
+        
+    } else if (provider == "openai" || provider == "copilot") {
+        endpoint = "https://api.openai.com/v1/chat/completions";
+        root["model"] = model;
+        QJsonArray messages;
+        QJsonObject msg;
+        msg["role"] = "user";
+        msg["content"] = prompt;
+        messages.append(msg);
+        root["messages"] = messages;
+        root["max_tokens"] = 4096;
+        
+    } else if (provider == "anthropic") {
+        endpoint = "https://api.anthropic.com/v1/messages";
+        root["model"] = model;
+        root["max_tokens"] = 4096;
+        QJsonArray messages;
+        QJsonObject msg;
+        msg["role"] = "user";
+        msg["content"] = prompt;
+        messages.append(msg);
+        root["messages"] = messages;
+    }
+    
+    QNetworkRequest request;
+    request.setUrl(QUrl(endpoint));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    
+    if (provider == "openai" || provider == "copilot") {
+        request.setRawHeader("Authorization", QString("Bearer %1").arg(apiKey).toUtf8());
+    } else if (provider == "anthropic") {
+        request.setRawHeader("x-api-key", apiKey.toUtf8());
+        request.setRawHeader("anthropic-version", "2023-06-01");
+    }
+    
+    QToolTip::showText(mapToGlobal(cursorRect().topLeft()), tr("🤖 AI is thinking..."), this);
+    
+    QNetworkReply *reply = m_NetworkManager->post(request, QJsonDocument(root).toJson());
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        handleAIResponse(reply);
+    });
+}
+
+void SourceCodeEdit::handleAIResponse(QNetworkReply *reply)
+{
+    QToolTip::hideText();
+    
+    if (reply->error() != QNetworkReply::NoError) {
+        QMessageBox::warning(this, tr("AI Error"), 
+            tr("Failed to get AI response: %1").arg(reply->errorString()));
+        reply->deleteLater();
+        return;
+    }
+    
+    QByteArray data = reply->readAll();
+    reply->deleteLater();
+    
+    QSettings settings;
+    QString provider = settings.value("ai_provider", "gemini").toString();
+    
+    QJsonDocument doc = QJsonDocument::fromJson(data);
+    QString responseText;
+    
+    if (provider == "gemini") {
+        QJsonArray candidates = doc.object()["candidates"].toArray();
+        if (!candidates.isEmpty()) {
+            QJsonObject content = candidates[0].toObject()["content"].toObject();
+            QJsonArray parts = content["parts"].toArray();
+            if (!parts.isEmpty()) {
+                responseText = parts[0].toObject()["text"].toString();
+            }
+        }
+    } else if (provider == "openai" || provider == "copilot") {
+        QJsonArray choices = doc.object()["choices"].toArray();
+        if (!choices.isEmpty()) {
+            responseText = choices[0].toObject()["message"].toObject()["content"].toString();
+        }
+    } else if (provider == "anthropic") {
+        QJsonArray content = doc.object()["content"].toArray();
+        if (!content.isEmpty()) {
+            responseText = content[0].toObject()["text"].toString();
+        }
+    }
+    
+    if (responseText.isEmpty()) {
+        QMessageBox::information(this, tr("AI Response"), tr("No response received."));
+        return;
+    }
+    
+    // Check if response contains code block - if so, offer to replace selection
+    QRegularExpression codeBlockRegex("```[a-z]*\\n([\\s\\S]*?)\\n```");
+    QRegularExpressionMatch match = codeBlockRegex.match(responseText);
+    
+    if (match.hasMatch() && textCursor().hasSelection()) {
+        QString code = match.captured(1);
+        
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle(tr("AI Response"));
+        msgBox.setText(tr("AI has suggested code changes."));
+        msgBox.setInformativeText(tr("Do you want to replace the selected text with the AI suggestion?"));
+        msgBox.setDetailedText(code);
+        msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+        msgBox.setDefaultButton(QMessageBox::No);
+        
+        if (msgBox.exec() == QMessageBox::Yes) {
+            QTextCursor cursor = textCursor();
+            cursor.beginEditBlock();
+            cursor.removeSelectedText();
+            cursor.insertText(code);
+            cursor.endEditBlock();
+            setTextCursor(cursor);
+        }
+    } else {
+        // Show response in a message box
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle(tr("AI Response"));
+        msgBox.setText(tr("AI Analysis Complete"));
+        msgBox.setDetailedText(responseText);
+        msgBox.setStandardButtons(QMessageBox::Ok);
+        msgBox.exec();
+    }
+    
+    emit aiResponseReceived(responseText);
 }
