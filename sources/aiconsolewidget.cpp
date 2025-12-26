@@ -1508,57 +1508,130 @@ void AIConsoleWidget::startCliAgent()
         m_TerminalOutput->clear();
     }
     
-    m_CliProcess = new QProcess(this);
-    
-    // Set working directory to project path if available
-    if (!m_ProjectPath.isEmpty() && QDir(m_ProjectPath).exists()) {
-        m_CliProcess->setWorkingDirectory(m_ProjectPath);
-        appendTerminalOutput(tr("📁 Working directory: %1\n\n").arg(m_ProjectPath), "#808080");
-    }
-    
-    // Enable PTY mode for better terminal emulation
-    m_CliProcess->setProcessChannelMode(QProcess::MergedChannels);
-    
-    connect(m_CliProcess, &QProcess::readyReadStandardOutput, this, &AIConsoleWidget::handleCliOutput);
-    connect(m_CliProcess, &QProcess::readyReadStandardError, this, &AIConsoleWidget::handleCliError);
-    connect(m_CliProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, &AIConsoleWidget::handleCliFinished);
-    
-    QStringList args = getCliAgentArgs();
-    
     QSettings settings;
     QString provider = settings.value("ai_provider", "gemini").toString();
     
-    appendTerminalOutput(tr("🚀 Starting %1 CLI Agent...\n").arg(provider.toUpper()), "#4ec9b0");
+    // For interactive CLI agents like Gemini, we need to launch an external terminal
+    // because they require a real PTY/TTY for proper terminal interaction
     
 #ifdef Q_OS_WIN
-    if (command == "gemini") {
-        // On Windows, run gemini directly
-        m_CliProcess->start("cmd", QStringList() << "/c" << "gemini");
-    } else {
-        m_CliProcess->start(command, args);
-    }
-#else
-    if (m_NvmAvailable && command == "gemini") {
-        // Source nvm before running
-        m_CliProcess->start("bash", QStringList() << "-c" << 
-            QString("source \"%1/nvm.sh\" && %2").arg(m_NvmPath, command));
-    } else {
-        m_CliProcess->start(command, args);
-    }
-#endif
+    // Try to detect Windows Terminal first, then fall back to PowerShell/CMD
+    QString terminalCmd;
+    QString workDir = m_ProjectPath.isEmpty() ? QDir::currentPath() : m_ProjectPath;
     
-    if (m_CliProcess->waitForStarted(10000)) {
-        appendTerminalOutput(tr("✅ CLI Agent ready. Type your commands below.\n\n"), "#4ec9b0");
-        m_UseCliAgent = true;
-        
-        // Switch to terminal view
-        switchToTerminalView();
+    // Build the CLI command to run
+    QString cliCommand;
+    if (provider == "gemini") {
+        cliCommand = "gemini";
+    } else if (provider == "copilot") {
+        cliCommand = "gh copilot";
     } else {
-        QString error = m_CliProcess->errorString();
-        appendTerminalOutput(tr("❌ Failed to start CLI agent: %1\n").arg(error), "#f14c4c");
+        cliCommand = command;
+    }
+    
+    // Check for Windows Terminal (wt.exe)
+    QProcess wtCheck;
+    wtCheck.start("cmd", QStringList() << "/c" << "where wt");
+    bool hasWindowsTerminal = wtCheck.waitForFinished(3000) && wtCheck.exitCode() == 0;
+    
+    m_CliProcess = new QProcess(this);
+    
+    connect(m_CliProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &AIConsoleWidget::handleCliFinished);
+    
+    if (hasWindowsTerminal) {
+        // Use Windows Terminal for best experience
+        // wt -d "workdir" cmd /k "gemini"
+        QStringList args;
+        args << "-d" << workDir << "cmd" << "/k" << cliCommand;
+        m_CliProcess->start("wt", args);
+        appendTerminalOutput(tr("🚀 Launching %1 in Windows Terminal...\n").arg(provider.toUpper()), "#4ec9b0");
+    } else {
+        // Fall back to PowerShell in a new window
+        // start powershell -NoExit -Command "cd 'workdir'; gemini"
+        QString psCommand = QString("cd '%1'; %2").arg(workDir.replace("'", "''"), cliCommand);
+        m_CliProcess->start("powershell", QStringList() 
+            << "-Command" << QString("Start-Process powershell -ArgumentList '-NoExit','-Command','%1'").arg(psCommand));
+        appendTerminalOutput(tr("🚀 Launching %1 in PowerShell...\n").arg(provider.toUpper()), "#4ec9b0");
+    }
+    
+#else
+    // macOS/Linux - use the system terminal
+    m_CliProcess = new QProcess(this);
+    QString workDir = m_ProjectPath.isEmpty() ? QDir::currentPath() : m_ProjectPath;
+    
+    connect(m_CliProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &AIConsoleWidget::handleCliFinished);
+    
+    QString cliCommand;
+    if (m_NvmAvailable) {
+        cliCommand = QString("source \"%1/nvm.sh\" && cd \"%2\" && %3")
+            .arg(m_NvmPath, workDir, command);
+    } else {
+        cliCommand = QString("cd \"%1\" && %2").arg(workDir, command);
+    }
+    
+#ifdef Q_OS_MAC
+    // macOS - use osascript to open Terminal.app
+    QString script = QString("tell application \"Terminal\" to do script \"%1\"")
+        .arg(cliCommand.replace("\"", "\\\""));
+    m_CliProcess->start("osascript", QStringList() << "-e" << script);
+    appendTerminalOutput(tr("🚀 Launching %1 in Terminal.app...\n").arg(provider.toUpper()), "#4ec9b0");
+#else
+    // Linux - try various terminals
+    QStringList terminals = {"gnome-terminal", "konsole", "xfce4-terminal", "xterm"};
+    QString terminalExec;
+    
+    for (const QString &term : terminals) {
+        QProcess whichCheck;
+        whichCheck.start("which", QStringList() << term);
+        if (whichCheck.waitForFinished(2000) && whichCheck.exitCode() == 0) {
+            terminalExec = term;
+            break;
+        }
+    }
+    
+    if (!terminalExec.isEmpty()) {
+        if (terminalExec == "gnome-terminal") {
+            m_CliProcess->start(terminalExec, QStringList() << "--" << "bash" << "-c" << cliCommand);
+        } else if (terminalExec == "konsole") {
+            m_CliProcess->start(terminalExec, QStringList() << "-e" << "bash" << "-c" << cliCommand);
+        } else {
+            m_CliProcess->start(terminalExec, QStringList() << "-e" << QString("bash -c '%1'").arg(cliCommand));
+        }
+        appendTerminalOutput(tr("🚀 Launching %1 in %2...\n").arg(provider.toUpper(), terminalExec), "#4ec9b0");
+    } else {
+        appendTerminalOutput(tr("❌ No terminal emulator found.\n"), "#f14c4c");
         delete m_CliProcess;
         m_CliProcess = nullptr;
+        m_ModeCombo->setCurrentIndex(0);
+        return;
+    }
+#endif
+#endif
+    
+    if (m_CliProcess && m_CliProcess->waitForStarted(10000)) {
+        appendTerminalOutput(tr("✅ CLI Agent launched in external terminal.\n"), "#4ec9b0");
+        appendTerminalOutput(tr("📁 Working directory: %1\n\n").arg(workDir), "#808080");
+        appendTerminalOutput(tr("💡 The CLI agent is running in an external terminal window.\n"), "#dcdcaa");
+        appendTerminalOutput(tr("   Close the terminal window to return to API mode.\n\n"), "#808080");
+        m_UseCliAgent = true;
+        
+        // Switch to terminal view (shows info about external terminal)
+        switchToTerminalView();
+        
+        // Hide input since it's in external terminal
+        if (m_TerminalInput) {
+            m_TerminalInput->setEnabled(false);
+            m_TerminalInput->setPlaceholderText(tr("Input is in external terminal window..."));
+        }
+    } else {
+        QString error = m_CliProcess ? m_CliProcess->errorString() : tr("Process creation failed");
+        appendTerminalOutput(tr("❌ Failed to launch CLI agent: %1\n").arg(error), "#f14c4c");
+        if (m_CliProcess) {
+            delete m_CliProcess;
+            m_CliProcess = nullptr;
+        }
         
         // Stay in AI assistant view
         m_ModeCombo->setCurrentIndex(0);
@@ -1576,6 +1649,12 @@ void AIConsoleWidget::stopCliAgent()
         m_CliProcess = nullptr;
         m_UseCliAgent = false;
         appendSystemMessage(tr("🛑 CLI Agent stopped"));
+        
+        // Re-enable terminal input
+        if (m_TerminalInput) {
+            m_TerminalInput->setEnabled(true);
+            m_TerminalInput->setPlaceholderText(tr("Enter command..."));
+        }
     }
 }
 
@@ -1646,12 +1725,19 @@ void AIConsoleWidget::handleCliError()
 void AIConsoleWidget::handleCliFinished(int exitCode, QProcess::ExitStatus status)
 {
     Q_UNUSED(status)
-    appendTerminalOutput(tr("\n[Process exited with code %1]\n").arg(exitCode), "#808080");
+    appendTerminalOutput(tr("\n[External terminal closed with code %1]\n").arg(exitCode), "#808080");
     m_UseCliAgent = false;
     m_CliProcess = nullptr;
     
+    // Re-enable terminal input
+    if (m_TerminalInput) {
+        m_TerminalInput->setEnabled(true);
+        m_TerminalInput->setPlaceholderText(tr("Enter command..."));
+    }
+    
     // Switch back to AI assistant view
     switchToAiAssistantView();
+    m_ModeCombo->setCurrentIndex(0); // Reset to API mode
 }
 
 void AIConsoleWidget::onModeChanged(int index)
