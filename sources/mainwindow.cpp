@@ -93,7 +93,7 @@ MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
     setMenuBar(buildMenuBar());
     setMinimumSize(WINDOW_WIDTH, WINDOW_HEIGHT);
     setStatusBar(buildStatusBar(versions));
-    updateWindowTitle();
+    setWindowTitle(tr("APK Studio").append(" - https://vaibhavpandey.com/apkstudio/"));
     
 #ifdef Q_OS_LINUX
     // Set window icon explicitly for Linux window managers
