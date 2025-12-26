@@ -2,21 +2,22 @@ name: Build
 
 on:
   push:
-    branches: [ master, feature/antisplit ]
+    branches:
+      - master
+      - feature/antisplit
   pull_request:
-    branches: [ master ]
+    branches:
+      - master
+  release:
+    types: [created]
   workflow_dispatch:
 
 permissions:
   contents: write
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build-windows:
-    name: Build Windows (MSVC Fresh)
+    name: Build Windows
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -24,38 +25,71 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
-          arch: "win64_msvc2022_64"
+          cache: false # Forzar fresh env build
 
-      - name: Clean and Configure
+      - name: Install Ninja
+        run: choco install ninja
+
+      - name: Clean environment
         run: |
           if (Test-Path build) { Remove-Item -Recurse -Force build }
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022" -A x64
+          if (Test-Path bin) { Remove-Item -Recurse -Force bin }
         shell: pwsh
 
+      - name: Configure CMake
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -GNinja
+        shell: cmd
+
       - name: Build
-        run: cmake --build build --config Release --parallel
-        
-      - name: Deploy
+        run: |
+          cmake --build build --config Release --parallel %NUMBER_OF_PROCESSORS%
+        shell: cmd
+
+      - name: Deploy Qt dependencies
         shell: pwsh
         run: |
           $env:PATH = "$env:Qt6_DIR\bin;$env:PATH"
-          windeployqt --release --no-translations build\bin\Release\ApkStudio.exe
+          $ExePath = "build/bin/ApkStudio.exe"
+          if (!(Test-Path $ExePath)) {
+            $ExePath = "build/ApkStudio.exe"
+          }
+          if (!(Test-Path $ExePath)) {
+             $ExePath = Get-ChildItem -Path build -Recurse -Filter "ApkStudio.exe" | Select-Object -First 1 -ExpandProperty FullName
+          }
+          Write-Host "Found executable at: $ExePath"
+          windeployqt --release $ExePath
 
-      - name: Upload
+      - name: Create archive
+        shell: pwsh
+        run: |
+          $SourceDir = "build/bin"
+          if (!(Test-Path $SourceDir)) { $SourceDir = "build" }
+          Compress-Archive -Path "$SourceDir\*" -DestinationPath ApkStudio-Windows-x64.zip
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ApkStudio-Windows-MSVC
-          path: build\bin\Release\
+          name: ApkStudio-Windows-x64
+          path: ApkStudio-Windows-x64.zip
+          retention-days: 30
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: ApkStudio-Windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
-    name: Build Linux (Fresh)
+    name: Build Linux
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -66,38 +100,69 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgl1-mesa-dev libxkbcommon-x11-0 fuse ninja-build
+          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 ninja-build
 
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
+          cache: false
 
-      - name: Clean and Configure
+      - name: Clean project
+        run: rm -rf build install AppDir
+
+      - name: Configure CMake
         run: |
-          rm -rf build
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -GNinja
 
       - name: Build
-        run: cmake --build build --config Release
+        run: |
+          cmake --build build --config Release -j$(nproc)
 
-      - name: Prepare AppImage
+      - name: Install
+        run: |
+          cmake --install build --prefix install
+
+      - name: Download linuxdeploy and plugins
+        run: |
+          wget -c -nv "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          wget -c -nv "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          wget -c -nv "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage"
+          chmod +x linuxdeploy*.AppImage
+
+      - name: Prepare AppDir for AppImage
         run: |
           mkdir -p AppDir/usr/bin
-          cp build/bin/ApkStudio AppDir/usr/bin/apkstudio
-          wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
-          wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
-          chmod +x linuxdeploy*.AppImage
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/apkstudio --plugin qt --output appimage
+          EXECUTABLE=""
+          for path in install/bin/ApkStudio install/bin/apkstudio build/ApkStudio build/apkstudio build/bin/ApkStudio; do
+            if [ -f "$path" ]; then EXECUTABLE="$path"; break; fi
+          done
+          if [ -z "$EXECUTABLE" ]; then
+            exit 1
+          fi
+          cp "$EXECUTABLE" AppDir/usr/bin/apkstudio
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
+          cp resources/apkstudio.desktop AppDir/usr/share/applications/
+          sed -i 's/^Icon=.*/Icon=apkstudio/' AppDir/usr/share/applications/apkstudio.desktop
+          cp resources/icon.png AppDir/apkstudio.png
+          cp resources/icon.png AppDir/usr/share/icons/hicolor/512x512/apps/apkstudio.png
+          chmod +x AppDir/usr/bin/apkstudio
 
-      - name: Upload
+      - name: Create AppImage with linuxdeploy
+        run: |
+          export QTDIR=${{ env.QT_ROOT_DIR }}
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/apkstudio --desktop-file AppDir/usr/share/applications/apkstudio.desktop --icon-file AppDir/apkstudio.png --plugin qt --output appimage
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ApkStudio-Linux-AppImage
+          name: ApkStudio-Linux-x64
           path: ApkStudio*.AppImage
+          retention-days: 30
 
   build-macos:
-    name: Build macOS (Fresh)
+    name: Build macOS
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -109,22 +174,42 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
+          cache: false
 
-      - name: Clean and Configure
+      - name: Set Qt directory
         run: |
-          rm -rf build
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}" -GNinja
+          QT_DIR="${{ env.Qt6_DIR }}"
+          if [ -z "$QT_DIR" ]; then
+            QT_CONFIG=$(find "$HOME" "$RUNNER_WORKSPACE" -name "Qt6Config.cmake" -type f | head -1)
+            QT_DIR=$(dirname "$QT_CONFIG" | xargs dirname | xargs dirname | xargs dirname)
+          fi
+          echo "QT_DIR=$QT_DIR" >> $GITHUB_ENV
+
+      - name: Clean project
+        run: rm -rf build
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.QT_DIR }}"
 
       - name: Build
-        run: cmake --build build --config Release
-
-      - name: Bundle and DMG
         run: |
-          ${{ env.Qt6_DIR }}/bin/macdeployqt build/bin/ApkStudio.app -dmg
-          mv build/bin/ApkStudio.dmg ApkStudio-macOS.dmg
+          cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
-      - name: Upload
+      - name: Deploy Qt frameworks
+        run: |
+          "${{ env.QT_DIR }}/bin/macdeployqt" build/bin/ApkStudio.app -always-overwrite
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          mkdir -p dmg_temp
+          cp -R build/bin/ApkStudio.app dmg_temp/
+          mv "dmg_temp/ApkStudio.app" "dmg_temp/APK Studio.app"
+          create-dmg --volname "APK Studio" --window-pos 200 120 --window-size 600 400 --icon-size 100 --icon "APK Studio.app" 150 190 --hide-extension "APK Studio.app" --app-drop-link 450 190 "ApkStudio-macOS-x64.dmg" dmg_temp/
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ApkStudio-macOS-DMG
-          path: ApkStudio-macOS.dmg
+          name: ApkStudio-macOS-x64
+          path: ApkStudio-macOS-x64.dmg
