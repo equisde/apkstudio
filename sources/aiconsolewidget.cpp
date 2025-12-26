@@ -1115,26 +1115,81 @@ void AIConsoleWidget::detectEnvironment()
         }
     }
     
-    // Check for Gemini CLI (@google/gemini-cli)
+    // Check for Gemini CLI (@google/gemini-cli) - improved detection
+    // Try multiple methods since gemini CLI may not have --version
     QProcess geminiCheck;
+    bool geminiDetected = false;
+    
 #ifdef Q_OS_WIN
-    geminiCheck.start("cmd", QStringList() << "/c" << "gemini --version");
-#else
-    if (m_NvmAvailable) {
-        geminiCheck.start("bash", QStringList() << "-c" << 
-            QString("source \"%1/nvm.sh\" && gemini --version 2>/dev/null").arg(m_NvmPath));
-    } else {
-        geminiCheck.start("gemini", QStringList() << "--version");
-    }
-#endif
-    if (geminiCheck.waitForFinished(5000)) {
+    // Method 1: Check with 'where gemini' on Windows
+    geminiCheck.start("cmd", QStringList() << "/c" << "where gemini");
+    if (geminiCheck.waitForFinished(5000) && geminiCheck.exitCode() == 0) {
         QString output = geminiCheck.readAllStandardOutput().trimmed();
-        QString error = geminiCheck.readAllStandardError().trimmed();
-        // Gemini CLI may output version or just work
-        if (geminiCheck.exitCode() == 0 || output.contains("gemini") || !output.isEmpty()) {
-            m_GeminiCliAvailable = true;
+        if (!output.isEmpty() && (output.contains("gemini") || output.contains("npm"))) {
+            geminiDetected = true;
         }
     }
+    
+    // Method 2: Check npm global packages
+    if (!geminiDetected) {
+        QProcess npmCheck;
+        npmCheck.start("cmd", QStringList() << "/c" << "npm list -g @google/gemini-cli --depth=0");
+        if (npmCheck.waitForFinished(10000)) {
+            QString output = npmCheck.readAllStandardOutput().trimmed();
+            if (output.contains("@google/gemini-cli")) {
+                geminiDetected = true;
+            }
+        }
+    }
+    
+    // Method 3: Try running gemini --help (more reliable than --version)
+    if (!geminiDetected) {
+        QProcess helpCheck;
+        helpCheck.start("cmd", QStringList() << "/c" << "gemini --help");
+        if (helpCheck.waitForFinished(8000)) {
+            QString output = helpCheck.readAllStandardOutput().trimmed();
+            QString error = helpCheck.readAllStandardError().trimmed();
+            if (helpCheck.exitCode() == 0 || output.contains("gemini") || 
+                output.contains("Usage") || error.contains("gemini")) {
+                geminiDetected = true;
+            }
+        }
+    }
+#else
+    // Unix/Mac detection
+    if (m_NvmAvailable) {
+        // Method 1: Check with which command inside nvm environment
+        geminiCheck.start("bash", QStringList() << "-c" << 
+            QString("source \"%1/nvm.sh\" 2>/dev/null && which gemini").arg(m_NvmPath));
+    } else {
+        geminiCheck.start("which", QStringList() << "gemini");
+    }
+    if (geminiCheck.waitForFinished(5000) && geminiCheck.exitCode() == 0) {
+        QString output = geminiCheck.readAllStandardOutput().trimmed();
+        if (!output.isEmpty()) {
+            geminiDetected = true;
+        }
+    }
+    
+    // Method 2: Check npm global packages
+    if (!geminiDetected) {
+        QProcess npmCheck;
+        if (m_NvmAvailable) {
+            npmCheck.start("bash", QStringList() << "-c" << 
+                QString("source \"%1/nvm.sh\" 2>/dev/null && npm list -g @google/gemini-cli --depth=0").arg(m_NvmPath));
+        } else {
+            npmCheck.start("npm", QStringList() << "list" << "-g" << "@google/gemini-cli" << "--depth=0");
+        }
+        if (npmCheck.waitForFinished(10000)) {
+            QString output = npmCheck.readAllStandardOutput().trimmed();
+            if (output.contains("@google/gemini-cli")) {
+                geminiDetected = true;
+            }
+        }
+    }
+#endif
+    
+    m_GeminiCliAvailable = geminiDetected;
     
     // Check for GitHub Copilot CLI
     QProcess copilotCheck;

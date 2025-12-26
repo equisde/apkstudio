@@ -15,6 +15,11 @@ on:
 permissions:
   contents: write
 
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-windows:
     name: Build Windows
@@ -25,44 +30,48 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Cache Qt
+        id: cache-qt
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.10.1-windows-${{ hashFiles('.github/workflows/build.yml') }}
+
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
           cache: true
+          dir: ${{ runner.temp }}/Qt
 
       - name: Configure CMake
         run: |
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build
+      - name: Build (parallel)
         run: |
-          cmake --build build --config Release
+          cmake --build build --config Release --parallel
 
       - name: Deploy Qt dependencies
         shell: pwsh
         run: |
           $env:PATH = "$env:Qt6_DIR\bin;$env:PATH"
-
-          # Find the executable
           $ExePath = ""
           if (Test-Path "build\bin\Release\ApkStudio.exe") {
             $ExePath = "build\bin\Release\ApkStudio.exe"
           } elseif (Test-Path "build\Release\ApkStudio.exe") {
             $ExePath = "build\Release\ApkStudio.exe"
           } else {
-            Write-Host "Error: Executable not found. Searching..."
+            Write-Host "Error: Executable not found"
             Get-ChildItem -Path build -Recurse -Filter "ApkStudio.exe" -ErrorAction SilentlyContinue | Select-Object FullName
             exit 1
           }
-
           Write-Host "Found executable at: $ExePath"
-          windeployqt --release $ExePath
+          windeployqt --release --no-translations --no-opengl-sw $ExePath
 
       - name: Create archive
         shell: pwsh
         run: |
-          # Find the directory containing the executable
           $SourceDir = ""
           if (Test-Path "build\bin\Release") {
             $SourceDir = "build\bin\Release"
@@ -72,9 +81,8 @@ jobs:
             Write-Host "Error: Release directory not found"
             exit 1
           }
-
           Write-Host "Creating archive from: $SourceDir"
-          Compress-Archive -Path "$SourceDir\*" -DestinationPath ApkStudio-Windows-x64.zip
+          Compress-Archive -Path "$SourceDir\*" -DestinationPath ApkStudio-Windows-x64.zip -CompressionLevel Fastest
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -82,6 +90,7 @@ jobs:
           name: ApkStudio-Windows-x64
           path: ApkStudio-Windows-x64.zip
           retention-days: 30
+          compression-level: 0
 
       - name: Upload to release
         if: github.event_name == 'release'
@@ -104,19 +113,37 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0
+          sudo apt-get install -y --no-install-recommends libgl1-mesa-dev libxkbcommon-x11-0 fuse
+
+      - name: Cache Qt
+        id: cache-qt
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.10.1-linux-${{ hashFiles('.github/workflows/build.yml') }}
 
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
           cache: true
+          dir: ${{ runner.temp }}/Qt
+
+      - name: Cache linuxdeploy
+        id: cache-linuxdeploy
+        uses: actions/cache@v4
+        with:
+          path: |
+            linuxdeploy-x86_64.AppImage
+            linuxdeploy-plugin-qt-x86_64.AppImage
+            linuxdeploy-plugin-appimage-x86_64.AppImage
+          key: linuxdeploy-v1
 
       - name: Configure CMake
         run: |
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build
+      - name: Build (parallel)
         run: |
           cmake --build build --config Release -j$(nproc)
 
@@ -124,63 +151,46 @@ jobs:
         run: |
           cmake --install build --prefix install
 
-      - name: Download linuxdeploy and plugins
+      - name: Download linuxdeploy
+        if: steps.cache-linuxdeploy.outputs.cache-hit != 'true'
         run: |
-          wget -c -nv "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
-          wget -c -nv "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
-          wget -c -nv "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage"
-          chmod +x linuxdeploy*.AppImage
+          wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage"
 
-      - name: Find executable
-        run: |
-          echo "Searching for executable..."
-          find . -type f -executable \( -name "ApkStudio" -o -name "apkstudio" \) 2>/dev/null | head -5
-          ls -la install/bin/ 2>/dev/null || echo "install/bin/ does not exist"
-          ls -la build/ 2>/dev/null | head -10 || echo "build/ does not exist"
+      - name: Make linuxdeploy executable
+        run: chmod +x linuxdeploy*.AppImage
 
-      - name: Prepare AppDir for AppImage
+      - name: Prepare AppDir
         run: |
-          mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/lib
-          # Find the executable (could be ApkStudio or apkstudio, in build or install)
+          mkdir -p AppDir/usr/{bin,lib,share/applications,share/icons/hicolor/512x512/apps}
           EXECUTABLE=""
-          if [ -f install/bin/ApkStudio ]; then
-            EXECUTABLE="install/bin/ApkStudio"
-          elif [ -f install/bin/apkstudio ]; then
-            EXECUTABLE="install/bin/apkstudio"
-          elif [ -f build/ApkStudio ]; then
-            EXECUTABLE="build/ApkStudio"
-          elif [ -f build/apkstudio ]; then
-            EXECUTABLE="build/apkstudio"
-          else
-            echo "Error: Executable not found. Listing directories..."
+          for path in install/bin/ApkStudio install/bin/apkstudio build/ApkStudio build/apkstudio; do
+            if [ -f "$path" ]; then EXECUTABLE="$path"; break; fi
+          done
+          if [ -z "$EXECUTABLE" ]; then
+            echo "Error: Executable not found"
             find . -type f -executable -name "*pk*" 2>/dev/null || true
             exit 1
           fi
-          echo "Found executable at: $EXECUTABLE"
+          echo "Found: $EXECUTABLE"
           cp "$EXECUTABLE" AppDir/usr/bin/apkstudio
-          mkdir -p AppDir/usr/share/applications
-          mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
-          # Copy and fix desktop file to use correct icon name
           cp ${{ github.workspace }}/resources/apkstudio.desktop AppDir/usr/share/applications/
           sed -i 's/^Icon=.*/Icon=apkstudio/' AppDir/usr/share/applications/apkstudio.desktop
-          # Copy icon to both locations: root for linuxdeploy and hicolor for system
           cp ${{ github.workspace }}/resources/icon.png AppDir/apkstudio.png
           cp ${{ github.workspace }}/resources/icon.png AppDir/usr/share/icons/hicolor/512x512/apps/apkstudio.png
           chmod +x AppDir/usr/bin/apkstudio
 
-      - name: Create AppImage with linuxdeploy
+      - name: Create AppImage
         run: |
           export QTDIR=${{ env.QT_ROOT_DIR }}
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/apkstudio --desktop-file AppDir/usr/share/applications/apkstudio.desktop --icon-file AppDir/apkstudio.png --plugin qt --output appimage
 
       - name: Rename AppImage if tagged
         run: |
-          if [ ! -z "${{ github.ref }}" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG_NAME=${GITHUB_REF#refs/tags/}
-            if [ -f ApkStudio-x86_64.AppImage ]; then
-              mv ApkStudio-x86_64.AppImage ApkStudio-${TAG_NAME}-x86_64.AppImage
-            fi
+            [ -f ApkStudio-x86_64.AppImage ] && mv ApkStudio-x86_64.AppImage ApkStudio-${TAG_NAME}-x86_64.AppImage
           fi
 
       - name: Upload artifact
@@ -190,25 +200,14 @@ jobs:
           path: ApkStudio*.AppImage
           if-no-files-found: error
           retention-days: 30
+          compression-level: 0
 
       - name: Upload to release
-        if: github.event_name == 'release'
-        run: |
-          # Find the AppImage file
-          APPIMAGE_FILE=$(find . -maxdepth 1 -name "ApkStudio*.AppImage" -type f | head -1)
-          if [ -z "$APPIMAGE_FILE" ]; then
-            echo "Error: AppImage file not found"
-            exit 1
-          fi
-          echo "Found AppImage: $APPIMAGE_FILE"
-          echo "APPIMAGE_FILE=$APPIMAGE_FILE" >> $GITHUB_ENV
-
-      - name: Upload AppImage to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: ${{ env.APPIMAGE_FILE }}
+          files: ApkStudio*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -221,176 +220,66 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Cache Qt
+        id: cache-qt
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.10.1-macos-${{ hashFiles('.github/workflows/build.yml') }}
+
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
           cache: true
+          dir: ${{ runner.temp }}/Qt
 
       - name: Set Qt directory
         run: |
-          QT_DIR=""
-          if [ -n "${{ env.Qt6_DIR }}" ]; then
-            QT_DIR="${{ env.Qt6_DIR }}"
-          elif [ -n "${{ env.Qt_DIR }}" ]; then
-            QT_DIR="${{ env.Qt_DIR }}"
-          else
-            QT_CONFIG=$(find "$HOME" "$RUNNER_WORKSPACE" "/Users/runner" -name "Qt6Config.cmake" -type f 2>/dev/null | head -1)
-            if [ -n "$QT_CONFIG" ]; then
-              QT_DIR=$(dirname "$QT_CONFIG" | xargs dirname | xargs dirname | xargs dirname)
-            fi
-          fi
+          QT_DIR="${{ env.Qt6_DIR }}"
+          if [ -z "$QT_DIR" ]; then QT_DIR="${{ env.Qt_DIR }}"; fi
           if [ -z "$QT_DIR" ] || [ ! -d "$QT_DIR" ]; then
-            echo "Error: Could not determine Qt directory"
-            exit 1
+            QT_CONFIG=$(find "$HOME" "$RUNNER_WORKSPACE" "/Users/runner" -name "Qt6Config.cmake" -type f 2>/dev/null | head -1)
+            [ -n "$QT_CONFIG" ] && QT_DIR=$(dirname "$QT_CONFIG" | xargs dirname | xargs dirname | xargs dirname)
           fi
-          echo "Using Qt directory: $QT_DIR"
+          [ -z "$QT_DIR" ] || [ ! -d "$QT_DIR" ] && { echo "Error: Qt not found"; exit 1; }
           echo "QT_DIR=$QT_DIR" >> $GITHUB_ENV
 
       - name: Configure CMake
-        run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.QT_DIR }}"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.QT_DIR }}"
 
-      - name: Build
-        run: |
-          cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+      - name: Build (parallel)
+        run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
       - name: Deploy Qt frameworks
         run: |
-          QT_DIR="${{ env.QT_DIR }}"
-          export PATH="$QT_DIR/bin:$PATH"
           APP_BUNDLE="build/bin/ApkStudio.app"
-
-          # Verify app bundle exists
-          if [ ! -d "$APP_BUNDLE" ]; then
-            echo "Error: App bundle not found at $APP_BUNDLE"
-            find . -type d -name "*.app" 2>/dev/null || true
-            exit 1
-          fi
-
-          # Find macdeployqt
-          MACDEPLOYQT="$QT_DIR/bin/macdeployqt"
-          if [ ! -f "$MACDEPLOYQT" ]; then
-            MACDEPLOYQT=$(find "$QT_DIR" -name "macdeployqt" -type f 2>/dev/null | head -1)
-          fi
-
-          if [ -z "$MACDEPLOYQT" ] || [ ! -f "$MACDEPLOYQT" ]; then
-            echo "Error: macdeployqt not found"
-            exit 1
-          fi
-
-          echo "Deploying Qt frameworks to: $APP_BUNDLE"
+          [ ! -d "$APP_BUNDLE" ] && { echo "Error: App not found"; exit 1; }
+          MACDEPLOYQT="${{ env.QT_DIR }}/bin/macdeployqt"
+          [ ! -f "$MACDEPLOYQT" ] && MACDEPLOYQT=$(find "${{ env.QT_DIR }}" -name "macdeployqt" -type f 2>/dev/null | head -1)
+          [ -z "$MACDEPLOYQT" ] && { echo "Error: macdeployqt not found"; exit 1; }
           chmod +x "$MACDEPLOYQT"
           "$MACDEPLOYQT" "$APP_BUNDLE" -always-overwrite
 
       - name: Install create-dmg
-        run: |
-          brew install create-dmg
+        run: brew install create-dmg
 
       - name: Create DMG
         run: |
-          APP_NAME="APK Studio"
-          APP_BUNDLE_NAME="ApkStudio.app"
-          APP_PATH="build/bin/${APP_BUNDLE_NAME}"
+          APP_PATH="build/bin/ApkStudio.app"
           DMG_NAME="ApkStudio-macOS-x64.dmg"
-
-          if [ ! -d "$APP_PATH" ]; then
-            echo "Error: App bundle not found at $APP_PATH"
-            exit 1
-          fi
-
-          # Remove quarantine attribute to prevent "damaged" error
+          [ ! -d "$APP_PATH" ] && { echo "Error: App not found"; exit 1; }
           xattr -cr "$APP_PATH"
-
-          # Code sign the app with ad-hoc signature (required for macOS Gatekeeper)
-          echo "Code signing app bundle..."
-          codesign --force --deep --sign - "$APP_PATH" || {
-            echo "Warning: Code signing failed, but continuing..."
-          }
-
-          # Verify the signature
-          codesign --verify --verbose "$APP_PATH" || {
-            echo "Warning: Code signature verification failed, but continuing..."
-          }
-
-          # Create a temporary directory for DMG contents
+          codesign --force --deep --sign - "$APP_PATH" || true
           mkdir -p dmg_temp
-          cp -R "$APP_PATH" "dmg_temp/${APP_BUNDLE_NAME}"
-
-          # Remove quarantine from copied app as well
-          xattr -cr "dmg_temp/${APP_BUNDLE_NAME}"
-
-          # Code sign the copied app as well
-          codesign --force --deep --sign - "dmg_temp/${APP_BUNDLE_NAME}" || {
-            echo "Warning: Code signing copied app failed, but continuing..."
-          }
-
-          # Touch the app bundle to refresh Finder icon cache
-          touch "dmg_temp/${APP_BUNDLE_NAME}"
-          touch "dmg_temp/${APP_BUNDLE_NAME}/Contents"
-          touch "dmg_temp/${APP_BUNDLE_NAME}/Contents/Info.plist"
-
-          # Verify icon exists in app bundle
+          cp -R "$APP_PATH" "dmg_temp/APK Studio.app"
+          xattr -cr "dmg_temp/APK Studio.app"
+          codesign --force --deep --sign - "dmg_temp/APK Studio.app" || true
           ICON_PATH="$APP_PATH/Contents/Resources/icon.icns"
-          if [ ! -f "$ICON_PATH" ]; then
-            echo "Warning: Icon not found at $ICON_PATH"
-            echo "Contents of Resources directory:"
-            ls -la "$APP_PATH/Contents/Resources/" 2>/dev/null || echo "Resources directory not found"
-          fi
-          
-          # Rename the bundle in DMG to show "APK Studio" instead of "ApkStudio"
-          # The executable name stays the same, only the bundle name changes
-          if [ -d "dmg_temp/${APP_BUNDLE_NAME}" ]; then
-            mv "dmg_temp/${APP_BUNDLE_NAME}" "dmg_temp/APK Studio.app"
-            DMG_APP_NAME="APK Studio.app"
-            echo "Renamed bundle to 'APK Studio.app' for DMG display"
-          else
-            DMG_APP_NAME="${APP_BUNDLE_NAME}"
-          fi
-          
-          # Re-sign the renamed bundle
-          if [ -d "dmg_temp/${DMG_APP_NAME}" ]; then
-            codesign --force --deep --sign - "dmg_temp/${DMG_APP_NAME}" || {
-              echo "Warning: Re-signing renamed bundle failed, but continuing..."
-            }
-          fi
-
-          # Create DMG with volume icon and ensure app icon is visible
-          if [ -f "$ICON_PATH" ]; then
-            create-dmg \
-              --volname "APK Studio" \
-              --volicon "$ICON_PATH" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "${DMG_APP_NAME}" 150 190 \
-              --hide-extension "${DMG_APP_NAME}" \
-              --app-drop-link 450 190 \
-              "$DMG_NAME" \
-              dmg_temp/
-          else
-            echo "Creating DMG without volume icon (icon file not found)"
-            create-dmg \
-              --volname "APK Studio" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "${DMG_APP_NAME}" 150 190 \
-              --hide-extension "${DMG_APP_NAME}" \
-              --app-drop-link 450 190 \
-              "$DMG_NAME" \
-              dmg_temp/
-          fi
-          
-
-          # Verify DMG was created
-          if [ -f "$DMG_NAME" ]; then
-            echo "DMG created successfully: $DMG_NAME"
-            ls -lh "$DMG_NAME"
-          else
-            echo "Error: DMG was not created"
-            exit 1
-          fi
+          CREATE_DMG_OPTS="--volname 'APK Studio' --window-pos 200 120 --window-size 600 400 --icon-size 100 --icon 'APK Studio.app' 150 190 --hide-extension 'APK Studio.app' --app-drop-link 450 190"
+          [ -f "$ICON_PATH" ] && CREATE_DMG_OPTS="--volicon '$ICON_PATH' $CREATE_DMG_OPTS"
+          eval "create-dmg $CREATE_DMG_OPTS '$DMG_NAME' dmg_temp/"
+          [ -f "$DMG_NAME" ] && echo "DMG created: $DMG_NAME" || { echo "DMG creation failed"; exit 1; }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -399,6 +288,7 @@ jobs:
           path: ApkStudio-macOS-x64.dmg
           if-no-files-found: error
           retention-days: 30
+          compression-level: 0
 
       - name: Upload to release
         if: github.event_name == 'release'
