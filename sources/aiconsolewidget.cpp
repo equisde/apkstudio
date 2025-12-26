@@ -10,10 +10,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSettings>
 #include <QTextStream>
+#include <QTimer>
 #include <QVBoxLayout>
 #include "aiconsolewidget.h"
 
@@ -1039,16 +1041,72 @@ QString AIConsoleWidget::buildFullProjectContext()
 // CLI Agent Integration
 // ============================================================================
 
+QString AIConsoleWidget::detectNvmPath()
+{
+    QString nvmPath;
+    
+#ifdef Q_OS_WIN
+    // Windows: Check for nvm-windows
+    QString userProfile = QDir::homePath();
+    QStringList possiblePaths = {
+        userProfile + "/AppData/Roaming/nvm",
+        "C:/nvm",
+        QProcessEnvironment::systemEnvironment().value("NVM_HOME")
+    };
+    
+    for (const QString &path : possiblePaths) {
+        if (!path.isEmpty() && QFile::exists(path + "/nvm.exe")) {
+            nvmPath = path;
+            break;
+        }
+    }
+#else
+    // macOS/Linux: Check for nvm
+    QString home = QDir::homePath();
+    QStringList possiblePaths = {
+        home + "/.nvm",
+        "/usr/local/opt/nvm",
+        QProcessEnvironment::systemEnvironment().value("NVM_DIR")
+    };
+    
+    for (const QString &path : possiblePaths) {
+        if (!path.isEmpty() && QFile::exists(path + "/nvm.sh")) {
+            nvmPath = path;
+            break;
+        }
+    }
+#endif
+    
+    return nvmPath;
+}
+
 void AIConsoleWidget::detectEnvironment()
 {
     m_NodeAvailable = false;
     m_GeminiCliAvailable = false;
     m_CopilotCliAvailable = false;
+    m_NvmAvailable = false;
+    m_NvmPath.clear();
     
-    // Check for Node.js
+    // Check for NVM first
+    m_NvmPath = detectNvmPath();
+    m_NvmAvailable = !m_NvmPath.isEmpty();
+    
+    // Check for Node.js (either system or via NVM)
     QProcess nodeCheck;
+#ifdef Q_OS_WIN
     nodeCheck.start("node", QStringList() << "--version");
-    if (nodeCheck.waitForFinished(3000)) {
+#else
+    // On Unix, try to source nvm first if available
+    if (m_NvmAvailable) {
+        nodeCheck.start("bash", QStringList() << "-c" << 
+            QString("source \"%1/nvm.sh\" && node --version").arg(m_NvmPath));
+    } else {
+        nodeCheck.start("node", QStringList() << "--version");
+    }
+#endif
+    
+    if (nodeCheck.waitForFinished(5000)) {
         QString output = nodeCheck.readAllStandardOutput().trimmed();
         if (output.startsWith("v")) {
             m_NodeAvailable = true;
@@ -1057,25 +1115,38 @@ void AIConsoleWidget::detectEnvironment()
         }
     }
     
-    // Check for Gemini CLI
+    // Check for Gemini CLI (@google/gemini-cli)
     QProcess geminiCheck;
-    geminiCheck.start("gemini", QStringList() << "--version");
-    if (geminiCheck.waitForFinished(3000)) {
-        m_GeminiCliAvailable = true;
+#ifdef Q_OS_WIN
+    geminiCheck.start("cmd", QStringList() << "/c" << "gemini --version");
+#else
+    if (m_NvmAvailable) {
+        geminiCheck.start("bash", QStringList() << "-c" << 
+            QString("source \"%1/nvm.sh\" && gemini --version 2>/dev/null").arg(m_NvmPath));
+    } else {
+        geminiCheck.start("gemini", QStringList() << "--version");
+    }
+#endif
+    if (geminiCheck.waitForFinished(5000)) {
+        QString output = geminiCheck.readAllStandardOutput().trimmed();
+        QString error = geminiCheck.readAllStandardError().trimmed();
+        // Gemini CLI may output version or just work
+        if (geminiCheck.exitCode() == 0 || output.contains("gemini") || !output.isEmpty()) {
+            m_GeminiCliAvailable = true;
+        }
     }
     
     // Check for GitHub Copilot CLI
     QProcess copilotCheck;
-    copilotCheck.start("github-copilot-cli", QStringList() << "--version");
-    if (copilotCheck.waitForFinished(3000)) {
-        m_CopilotCliAvailable = true;
-    }
-    
-    // Also check npx availability
-    if (!m_GeminiCliAvailable && m_NodeAvailable) {
-        QProcess npxCheck;
-        npxCheck.start("npx", QStringList() << "@anthropic-ai/claude-cli" << "--version");
-        // Just check if npx works
+#ifdef Q_OS_WIN
+    copilotCheck.start("cmd", QStringList() << "/c" << "gh copilot --version");
+#else
+    copilotCheck.start("gh", QStringList() << "copilot" << "--version");
+#endif
+    if (copilotCheck.waitForFinished(5000)) {
+        if (copilotCheck.exitCode() == 0) {
+            m_CopilotCliAvailable = true;
+        }
     }
 }
 
@@ -1084,12 +1155,25 @@ void AIConsoleWidget::checkDependencies()
     detectEnvironment();
     
     QString status = tr("🔍 Environment Check:\n");
+    status += QString("  • NVM: %1\n").arg(m_NvmAvailable ? m_NvmPath : tr("Not found"));
     status += QString("  • Node.js: %1\n").arg(m_NodeAvailable ? m_NodeVersion : tr("Not found"));
-    status += QString("  • Gemini CLI: %1\n").arg(m_GeminiCliAvailable ? tr("Available") : tr("Not installed"));
-    status += QString("  • Copilot CLI: %1\n").arg(m_CopilotCliAvailable ? tr("Available") : tr("Not installed"));
+    status += QString("  • Gemini CLI: %1\n").arg(m_GeminiCliAvailable ? tr("Available (@google/gemini-cli)") : tr("Not installed"));
+    status += QString("  • GitHub Copilot: %1\n").arg(m_CopilotCliAvailable ? tr("Available (gh copilot)") : tr("Not installed"));
     
     if (!m_NodeAvailable) {
-        status += tr("\n⚠️ Node.js is required for CLI agents. Install from nodejs.org");
+        status += tr("\n⚠️ Node.js is required for CLI agents.");
+        if (m_NvmAvailable) {
+            status += tr("\n💡 NVM detected! Use 'nvm install --lts' to install Node.js");
+        } else {
+            status += tr("\n💡 Install from https://nodejs.org or use NVM");
+        }
+    }
+    
+    if (m_NodeAvailable && !m_GeminiCliAvailable) {
+        status += tr("\n💡 Install Gemini CLI: npm install -g @google/gemini-cli");
+    }
+    if (m_NodeAvailable && !m_CopilotCliAvailable) {
+        status += tr("\n💡 Install GitHub Copilot: gh extension install github/gh-copilot");
     }
     
     appendSystemMessage(status);
@@ -1097,19 +1181,67 @@ void AIConsoleWidget::checkDependencies()
 
 void AIConsoleWidget::installDependencies()
 {
+    QSettings settings;
+    QString provider = settings.value("ai_provider", "gemini").toString();
+    
+    // Check if we need to install Node.js first via NVM
     if (!m_NodeAvailable) {
-        appendSystemMessage(tr("❌ Node.js is required. Please install from https://nodejs.org/"));
-        return;
+        if (m_NvmAvailable) {
+            appendSystemMessage(tr("📦 Installing Node.js LTS via NVM..."));
+            
+            QProcess *nvmInstaller = new QProcess(this);
+            connect(nvmInstaller, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                    this, [this, nvmInstaller, provider](int exitCode, QProcess::ExitStatus) {
+                if (exitCode == 0) {
+                    appendSystemMessage(tr("✅ Node.js installed successfully"));
+                    detectEnvironment();
+                    // Now install the CLI agent
+                    QTimer::singleShot(1000, this, &AIConsoleWidget::installCliAgent);
+                } else {
+                    appendSystemMessage(tr("❌ Failed to install Node.js via NVM"));
+                }
+                nvmInstaller->deleteLater();
+            });
+            
+#ifdef Q_OS_WIN
+            nvmInstaller->start("cmd", QStringList() << "/c" << "nvm install lts && nvm use lts");
+#else
+            nvmInstaller->start("bash", QStringList() << "-c" << 
+                QString("source \"%1/nvm.sh\" && nvm install --lts && nvm use --lts").arg(m_NvmPath));
+#endif
+            return;
+        } else {
+            appendSystemMessage(tr("❌ Node.js is required. Please install from https://nodejs.org/ or install NVM first."));
+            return;
+        }
+    }
+    
+    installCliAgent();
+}
+
+void AIConsoleWidget::installCliAgent()
+{
+    if (!m_NodeAvailable) {
+        detectEnvironment();
+        if (!m_NodeAvailable) {
+            appendSystemMessage(tr("❌ Node.js still not available"));
+            return;
+        }
     }
     
     QSettings settings;
     QString provider = settings.value("ai_provider", "gemini").toString();
     
     QString package;
+    QString installCmd;
+    
     if (provider == "gemini") {
-        package = "@anthropic-ai/gemini-cli";
+        package = "@google/gemini-cli";
+        installCmd = "npm install -g @google/gemini-cli";
     } else if (provider == "copilot") {
-        package = "@anthropic-ai/github-copilot-cli";
+        // GitHub Copilot uses gh extension
+        package = "gh-copilot";
+        installCmd = "gh extension install github/gh-copilot";
     }
     
     if (package.isEmpty()) {
@@ -1126,12 +1258,40 @@ void AIConsoleWidget::installDependencies()
             appendSystemMessage(tr("✅ Successfully installed %1").arg(package));
             detectEnvironment();
         } else {
-            appendSystemMessage(tr("❌ Failed to install %1").arg(package));
+            QString error = installer->readAllStandardError();
+            appendSystemMessage(tr("❌ Failed to install %1: %2").arg(package, error));
         }
         installer->deleteLater();
     });
     
-    installer->start("npm", QStringList() << "install" << "-g" << package);
+    QSettings settings2;
+    QString provider2 = settings2.value("ai_provider", "gemini").toString();
+    
+    if (provider2 == "copilot") {
+        // Use gh for GitHub Copilot
+#ifdef Q_OS_WIN
+        installer->start("cmd", QStringList() << "/c" << "gh extension install github/gh-copilot");
+#else
+        installer->start("gh", QStringList() << "extension" << "install" << "github/gh-copilot");
+#endif
+    } else {
+        // Use npm for other CLI tools
+#ifdef Q_OS_WIN
+        if (m_NvmAvailable) {
+            installer->start("cmd", QStringList() << "/c" << 
+                QString("nvm use lts && npm install -g %1").arg(package));
+        } else {
+            installer->start("npm", QStringList() << "install" << "-g" << package);
+        }
+#else
+        if (m_NvmAvailable) {
+            installer->start("bash", QStringList() << "-c" << 
+                QString("source \"%1/nvm.sh\" && npm install -g %2").arg(m_NvmPath, package));
+        } else {
+            installer->start("npm", QStringList() << "install" << "-g" << package);
+        }
+#endif
+    }
 }
 
 void AIConsoleWidget::startCliAgent()
@@ -1143,27 +1303,50 @@ void AIConsoleWidget::startCliAgent()
     QString command = getCliAgentCommand();
     if (command.isEmpty()) {
         appendSystemMessage(tr("❌ No CLI agent available for current configuration"));
+        appendSystemMessage(tr("💡 Click the 🔧 button to check and install dependencies"));
         return;
     }
     
     m_CliProcess = new QProcess(this);
-    m_CliProcess->setWorkingDirectory(m_ProjectPath);
+    
+    // Set working directory to project path if available
+    if (!m_ProjectPath.isEmpty() && QDir(m_ProjectPath).exists()) {
+        m_CliProcess->setWorkingDirectory(m_ProjectPath);
+    }
     
     connect(m_CliProcess, &QProcess::readyReadStandardOutput, this, &AIConsoleWidget::handleCliOutput);
     connect(m_CliProcess, &QProcess::readyReadStandardError, this, &AIConsoleWidget::handleCliError);
     connect(m_CliProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &AIConsoleWidget::handleCliFinished);
     
-    QStringList args;
-    args << "--interactive";
+    QStringList args = getCliAgentArgs();
     
-    m_CliProcess->start(command, args);
+    // For Gemini CLI, we don't need special args for interactive mode
+    // For gh copilot, we use "suggest" subcommand
     
-    if (m_CliProcess->waitForStarted(5000)) {
-        appendSystemMessage(tr("🤖 CLI Agent started: %1").arg(command));
+#ifdef Q_OS_WIN
+    if (m_NvmAvailable && command == "gemini") {
+        // Use cmd to ensure nvm environment is loaded
+        m_CliProcess->start("cmd", QStringList() << "/c" << command);
+    } else {
+        m_CliProcess->start(command, args);
+    }
+#else
+    if (m_NvmAvailable && command == "gemini") {
+        // Source nvm before running
+        m_CliProcess->start("bash", QStringList() << "-c" << 
+            QString("source \"%1/nvm.sh\" && %2").arg(m_NvmPath, command));
+    } else {
+        m_CliProcess->start(command, args);
+    }
+#endif
+    
+    if (m_CliProcess->waitForStarted(10000)) {
+        appendSystemMessage(tr("🤖 CLI Agent started: %1 %2").arg(command, args.join(" ")));
         m_UseCliAgent = true;
     } else {
-        appendSystemMessage(tr("❌ Failed to start CLI agent"));
+        QString error = m_CliProcess->errorString();
+        appendSystemMessage(tr("❌ Failed to start CLI agent: %1").arg(error));
         delete m_CliProcess;
         m_CliProcess = nullptr;
     }
@@ -1201,12 +1384,30 @@ QString AIConsoleWidget::getCliAgentCommand()
     detectEnvironment();
     
     if (provider == "gemini" && m_GeminiCliAvailable) {
+        // Gemini CLI from @google/gemini-cli
         return "gemini";
     } else if (provider == "copilot" && m_CopilotCliAvailable) {
-        return "github-copilot-cli";
+        // GitHub Copilot uses gh copilot
+        return "gh";
     }
     
     return QString();
+}
+
+QStringList AIConsoleWidget::getCliAgentArgs()
+{
+    QSettings settings;
+    QString provider = settings.value("ai_provider", "gemini").toString();
+    
+    if (provider == "gemini") {
+        // Gemini CLI interactive mode
+        return QStringList();
+    } else if (provider == "copilot") {
+        // gh copilot suggest
+        return QStringList() << "copilot" << "suggest";
+    }
+    
+    return QStringList();
 }
 
 void AIConsoleWidget::handleCliOutput()

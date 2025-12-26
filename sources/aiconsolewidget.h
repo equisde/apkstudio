@@ -38,6 +38,7 @@ private slots:
     void onModeChanged(int index);
     void checkDependencies();
     void installDependencies();
+    void installCliAgent();
     
 private:
     // UI elements
@@ -67,10 +68,12 @@ private:
     
     // Environment detection
     bool m_NodeAvailable;
+    bool m_NvmAvailable;
     bool m_GeminiCliAvailable;
     bool m_CopilotCliAvailable;
     QString m_NodePath;
     QString m_NodeVersion;
+    QString m_NvmPath;
     
     // Existing analysis check
     bool hasExistingAnalysis();
@@ -93,11 +96,13 @@ private:
     QString readFileContent(const QString &relativePath);
     
     // CLI agent management
+    QString detectNvmPath();
     void detectEnvironment();
     void startCliAgent();
     void stopCliAgent();
     void sendToCliAgent(const QString &message);
     QString getCliAgentCommand();
+    QStringList getCliAgentArgs();
     
     // System prompt for file operations
     QString getSystemPrompt();

@@ -9,6 +9,7 @@
 #include "aisettingswidget.h"
 #include "appearancesettingswidget.h"
 #include "binarysettingswidget.h"
+#include "languagesettingswidget.h"
 #include "signingconfigwidget.h"
 
 class SettingsDialog : public QDialog
@@ -20,6 +21,7 @@ private:
     AISettingsWidget *m_AISettingsWidget;
     AppearanceSettingsWidget *m_AppearanceSettingsWidget;
     BinarySettingsWidget *m_BinarySettingsWidget;
+    LanguageSettingsWidget *m_LanguageSettingsWidget;
     SigningConfigWidget *m_SigningConfigWidget;
     QDialogButtonBox *m_ButtonBox;
     QListWidget *m_OptionsList;

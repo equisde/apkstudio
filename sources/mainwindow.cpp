@@ -103,6 +103,17 @@ MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
     
     QTimer::singleShot(100, [=] {
         QSettings settings;
+        
+        // Auto-open last project if enabled
+        bool autoOpenLastProject = settings.value("auto_open_last_project", true).toBool();
+        QString lastProject = settings.value("open_project").toString();
+        if (autoOpenLastProject && !lastProject.isEmpty() && QDir(lastProject).exists()) {
+            QString apktoolYml = lastProject + "/apktool.yml";
+            if (QFile::exists(apktoolYml)) {
+                openProject(lastProject, true);
+            }
+        }
+        
         const QStringList files = settings.value("open_files").toStringList();
         foreach (const QString &file, files) {
             if (QFile::exists(file)) {
@@ -498,6 +509,9 @@ QMenuBar *MainWindow::buildMenuBar()
     
     // Security submenu
     auto security = tools->addMenu(tr("🔐 Security"));
+    security->addAction(tr("SSL Pinning Analyzer"), this, &MainWindow::handleToolSSLPinning);
+    security->addAction(tr("Certificate Injector"), this, &MainWindow::handleToolCertInjector);
+    security->addSeparator();
     security->addAction(tr("API Key Finder"), this, &MainWindow::handleToolApiKeyFinder);
     security->addAction(tr("Hardcoded URL/IP Finder"), this, &MainWindow::handleToolHardcodedFinder);
     
@@ -2060,6 +2074,30 @@ void MainWindow::handleToolStringEditor()
         return;
     }
     auto dialog = new StringResourceEditorDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolSSLPinning()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new SSLPinningDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolCertInjector()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new CertificateInjectorDialog(projectPath, this);
     dialog->exec();
     dialog->deleteLater();
 }

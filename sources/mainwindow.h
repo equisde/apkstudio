@@ -158,6 +158,8 @@ private slots:
     void handleToolSmaliPatcher();
     void handleToolAndroidTV();
     void handleToolStringEditor();
+    void handleToolSSLPinning();
+    void handleToolCertInjector();
     
     void openFile(const QString &file);
     void openFindReplaceDialog(QPlainTextEdit *edit, const bool replace);

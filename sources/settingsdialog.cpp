@@ -1,4 +1,5 @@
 #include <QHBoxLayout>
+#include "languagesettingswidget.h"
 #include "settingsdialog.h"
 
 SettingsDialog::SettingsDialog(const int page, QWidget *parent)
@@ -10,7 +11,7 @@ SettingsDialog::SettingsDialog(const int page, QWidget *parent)
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(2);
     setAttribute(Qt::WA_DeleteOnClose);
-    setMinimumSize(320, 240);
+    setMinimumSize(420, 340);
 #ifdef Q_OS_WIN
     setWindowIcon(QIcon(":/icons/fugue/gear.png"));
 #endif
@@ -40,12 +41,14 @@ QLayout *SettingsDialog::buildForm()
     m_OptionsList->addItem(new QListWidgetItem(QIcon(":/icons/fugue/application-terminal.png"), tr("Binaries")));
     m_OptionsList->addItem(new QListWidgetItem(QIcon(":/icons/fugue/edit-signiture.png"), tr("Signing")));
     m_OptionsList->addItem(new QListWidgetItem(QIcon(":/icons/fugue/robot.png"), tr("AI Assistant")));
+    m_OptionsList->addItem(new QListWidgetItem(QIcon(":/icons/fugue/gear.png"), tr("Language")));
     m_OptionsList->setCurrentRow(0);
     layout->addWidget(m_WidgetStack = new QStackedWidget(this), 3);
     m_WidgetStack->addWidget(m_AppearanceSettingsWidget = new AppearanceSettingsWidget(this));
     m_WidgetStack->addWidget(m_BinarySettingsWidget = new BinarySettingsWidget(this));
     m_WidgetStack->addWidget(m_SigningConfigWidget = new SigningConfigWidget(this));
     m_WidgetStack->addWidget(m_AISettingsWidget = new AISettingsWidget(this));
+    m_WidgetStack->addWidget(m_LanguageSettingsWidget = new LanguageSettingsWidget(this));
     connect(m_OptionsList, &QListWidget::currentRowChanged, m_WidgetStack, &QStackedWidget::setCurrentIndex);
     return layout;
 }

@@ -86,6 +86,7 @@ set(SOURCES
     sources/flickcharm.cpp
     sources/hexedit.cpp
     sources/imageviewerwidget.cpp
+    sources/languagesettingswidget.cpp
     sources/mainwindow.cpp
     sources/markdownviewerwidget.cpp
     sources/processutils.cpp
@@ -120,6 +121,7 @@ set(HEADERS
     sources/flickcharm.h
     sources/hexedit.h
     sources/imageviewerwidget.h
+    sources/languagesettingswidget.h
     sources/mainwindow.h
     sources/markdownviewerwidget.h
     sources/processutils.h

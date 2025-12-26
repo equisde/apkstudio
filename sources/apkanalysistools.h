@@ -1,13 +1,17 @@
 #ifndef APKANALYSISTOOLS_H
 #define APKANALYSISTOOLS_H
 
+#include <QCheckBox>
 #include <QDialog>
 #include <QJsonObject>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QPlainTextEdit>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QTableWidget>
 #include <QTextBrowser>
+#include <QTextEdit>
 #include <QTreeWidget>
 #include <QWidget>
 
@@ -290,6 +294,76 @@ private:
     QString m_ProjectPath;
     QTableWidget *m_Results;
     QProgressBar *m_ObfuscationLevel;
+};
+
+// SSL Pinning Analyzer & Unpinner
+class SSLPinningDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    explicit SSLPinningDialog(const QString &projectPath, QWidget *parent = nullptr);
+    
+private slots:
+    void analyzePinning();
+    void unpinAll();
+    void unpinSelected();
+    void addCustomCert();
+    void exportCertTemplate();
+    
+private:
+    struct PinningLocation {
+        QString filePath;
+        int lineNumber;
+        QString pinType; // "certificate", "publicKey", "hash", "okhttp", "trustmanager"
+        QString originalCode;
+        QString description;
+        bool canUnpin;
+    };
+    
+    void searchForPinning();
+    void searchSmaliFiles();
+    void searchJavaFiles();
+    void searchNetworkConfig();
+    bool unpinLocation(const PinningLocation &location);
+    QString generateTrustAllManager();
+    QString generateNetworkSecurityConfig();
+    void createFridaScript();
+    
+    QString m_ProjectPath;
+    QList<PinningLocation> m_PinningLocations;
+    QTableWidget *m_ResultsTable;
+    QTextBrowser *m_DetailsView;
+    QPushButton *m_UnpinAllBtn;
+    QPushButton *m_UnpinSelectedBtn;
+    QPushButton *m_AddCertBtn;
+    QProgressBar *m_Progress;
+};
+
+// Certificate Injector
+class CertificateInjectorDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    explicit CertificateInjectorDialog(const QString &projectPath, QWidget *parent = nullptr);
+    
+private slots:
+    void selectCertificate();
+    void injectCertificate();
+    void generateSelfSigned();
+    void previewChanges();
+    
+private:
+    void modifyNetworkSecurityConfig();
+    void addCertToResources();
+    void patchTrustManager();
+    
+    QString m_ProjectPath;
+    QString m_CertPath;
+    QLineEdit *m_CertPathEdit;
+    QTextEdit *m_PreviewEdit;
+    QCheckBox *m_ModifyConfigCheck;
+    QCheckBox *m_PatchTrustManagerCheck;
+    QCheckBox *m_CreateFridaScriptCheck;
 };
 
 #endif // APKANALYSISTOOLS_H

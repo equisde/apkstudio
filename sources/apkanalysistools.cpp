@@ -1,3 +1,4 @@
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDebug>
@@ -24,6 +25,7 @@
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTextStream>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
@@ -1587,4 +1589,802 @@ void ApkCompareDialog::compare()
     
     QMessageBox::information(this, tr("Comparison"), 
         tr("Basic comparison complete.\n\nFor detailed file-by-file comparison, decompile both APKs and use a diff tool."));
+}
+
+// ==================== SSL Pinning Analyzer ====================
+SSLPinningDialog::SSLPinningDialog(const QString &projectPath, QWidget *parent)
+    : QDialog(parent), m_ProjectPath(projectPath)
+{
+    setWindowTitle(tr("SSL Pinning Analyzer & Unpinner"));
+    setMinimumSize(900, 600);
+    
+    auto layout = new QVBoxLayout(this);
+    
+    // Header with description
+    auto headerLabel = new QLabel(tr(
+        "<h3>🔒 SSL Pinning Detection</h3>"
+        "<p>This tool analyzes the APK for SSL/TLS certificate pinning implementations "
+        "and provides options to bypass them for security testing.</p>"
+    ), this);
+    headerLabel->setWordWrap(true);
+    layout->addWidget(headerLabel);
+    
+    // Progress bar
+    m_Progress = new QProgressBar(this);
+    m_Progress->setVisible(false);
+    layout->addWidget(m_Progress);
+    
+    // Splitter for results and details
+    auto splitter = new QSplitter(Qt::Horizontal, this);
+    
+    // Results table
+    m_ResultsTable = new QTableWidget(this);
+    m_ResultsTable->setColumnCount(5);
+    m_ResultsTable->setHorizontalHeaderLabels({
+        tr("File"), tr("Line"), tr("Type"), tr("Description"), tr("Unpinnable")
+    });
+    m_ResultsTable->horizontalHeader()->setStretchLastSection(true);
+    m_ResultsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_ResultsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    connect(m_ResultsTable, &QTableWidget::itemSelectionChanged, this, [this]() {
+        int row = m_ResultsTable->currentRow();
+        if (row >= 0 && row < m_PinningLocations.size()) {
+            const auto &loc = m_PinningLocations[row];
+            QString details = QString(
+                "<h4>%1</h4>"
+                "<p><b>File:</b> %2</p>"
+                "<p><b>Line:</b> %3</p>"
+                "<p><b>Type:</b> %4</p>"
+                "<p><b>Original Code:</b></p>"
+                "<pre style='background:#1e1e1e;color:#d4d4d4;padding:10px;'>%5</pre>"
+            ).arg(loc.description, loc.filePath, QString::number(loc.lineNumber), 
+                  loc.pinType, loc.originalCode.toHtmlEscaped());
+            m_DetailsView->setHtml(details);
+        }
+    });
+    splitter->addWidget(m_ResultsTable);
+    
+    // Details view
+    m_DetailsView = new QTextBrowser(this);
+    m_DetailsView->setOpenExternalLinks(true);
+    splitter->addWidget(m_DetailsView);
+    
+    splitter->setSizes({500, 400});
+    layout->addWidget(splitter, 1);
+    
+    // Button row
+    auto buttonLayout = new QHBoxLayout();
+    
+    auto analyzeBtn = new QPushButton(tr("🔍 Analyze"), this);
+    connect(analyzeBtn, &QPushButton::clicked, this, &SSLPinningDialog::analyzePinning);
+    buttonLayout->addWidget(analyzeBtn);
+    
+    m_UnpinSelectedBtn = new QPushButton(tr("🔓 Unpin Selected"), this);
+    m_UnpinSelectedBtn->setEnabled(false);
+    connect(m_UnpinSelectedBtn, &QPushButton::clicked, this, &SSLPinningDialog::unpinSelected);
+    buttonLayout->addWidget(m_UnpinSelectedBtn);
+    
+    m_UnpinAllBtn = new QPushButton(tr("⚡ Unpin All"), this);
+    m_UnpinAllBtn->setEnabled(false);
+    connect(m_UnpinAllBtn, &QPushButton::clicked, this, &SSLPinningDialog::unpinAll);
+    buttonLayout->addWidget(m_UnpinAllBtn);
+    
+    buttonLayout->addStretch();
+    
+    m_AddCertBtn = new QPushButton(tr("📜 Add Custom Cert"), this);
+    connect(m_AddCertBtn, &QPushButton::clicked, this, &SSLPinningDialog::addCustomCert);
+    buttonLayout->addWidget(m_AddCertBtn);
+    
+    auto exportBtn = new QPushButton(tr("📋 Export Frida Script"), this);
+    connect(exportBtn, &QPushButton::clicked, this, &SSLPinningDialog::exportCertTemplate);
+    buttonLayout->addWidget(exportBtn);
+    
+    auto closeBtn = new QPushButton(tr("Close"), this);
+    connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
+    buttonLayout->addWidget(closeBtn);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Initial analysis
+    QTimer::singleShot(100, this, &SSLPinningDialog::analyzePinning);
+}
+
+void SSLPinningDialog::analyzePinning()
+{
+    m_PinningLocations.clear();
+    m_ResultsTable->setRowCount(0);
+    m_Progress->setVisible(true);
+    m_Progress->setValue(0);
+    
+    searchForPinning();
+    
+    m_Progress->setVisible(false);
+    
+    // Populate table
+    for (int i = 0; i < m_PinningLocations.size(); ++i) {
+        const auto &loc = m_PinningLocations[i];
+        m_ResultsTable->insertRow(i);
+        
+        QString shortPath = loc.filePath;
+        if (shortPath.startsWith(m_ProjectPath)) {
+            shortPath = shortPath.mid(m_ProjectPath.length() + 1);
+        }
+        
+        m_ResultsTable->setItem(i, 0, new QTableWidgetItem(shortPath));
+        m_ResultsTable->setItem(i, 1, new QTableWidgetItem(QString::number(loc.lineNumber)));
+        m_ResultsTable->setItem(i, 2, new QTableWidgetItem(loc.pinType));
+        m_ResultsTable->setItem(i, 3, new QTableWidgetItem(loc.description));
+        m_ResultsTable->setItem(i, 4, new QTableWidgetItem(loc.canUnpin ? tr("Yes") : tr("No")));
+    }
+    
+    bool hasResults = !m_PinningLocations.isEmpty();
+    m_UnpinAllBtn->setEnabled(hasResults);
+    m_UnpinSelectedBtn->setEnabled(hasResults);
+    
+    if (!hasResults) {
+        m_DetailsView->setHtml(tr("<h3>✅ No SSL pinning detected</h3>"
+            "<p>The app does not appear to use certificate pinning. "
+            "However, some apps use native code or obfuscated methods that may not be detected.</p>"));
+    }
+}
+
+void SSLPinningDialog::searchForPinning()
+{
+    searchSmaliFiles();
+    searchNetworkConfig();
+}
+
+void SSLPinningDialog::searchSmaliFiles()
+{
+    QDir smaliDir(m_ProjectPath + "/smali");
+    if (!smaliDir.exists()) return;
+    
+    // Patterns to detect SSL pinning
+    QStringList patterns = {
+        "Ljavax/net/ssl/TrustManagerFactory",
+        "Ljavax/net/ssl/X509TrustManager",
+        "Lokhttp3/CertificatePinner",
+        "Lcom/squareup/okhttp/CertificatePinner",
+        "checkServerTrusted",
+        "getAcceptedIssuers",
+        "Lorg/apache/http/conn/ssl/SSLSocketFactory",
+        "Landroid/webkit/SslErrorHandler",
+        "Ljava/security/cert/X509Certificate",
+        "pinCertificate",
+        "certificatePinner",
+        "TrustManager",
+        "Lcom/android/org/conscrypt"
+    };
+    
+    QDirIterator it(smaliDir.absolutePath(), QStringList() << "*.smali", 
+                    QDir::Files, QDirIterator::Subdirectories);
+    
+    int fileCount = 0;
+    while (it.hasNext()) {
+        QString filePath = it.next();
+        fileCount++;
+        if (fileCount % 100 == 0) {
+            m_Progress->setValue(fileCount % 100);
+            QApplication::processEvents();
+        }
+        
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        
+        QTextStream stream(&file);
+        int lineNum = 0;
+        while (!stream.atEnd()) {
+            QString line = stream.readLine();
+            lineNum++;
+            
+            for (const QString &pattern : patterns) {
+                if (line.contains(pattern, Qt::CaseInsensitive)) {
+                    PinningLocation loc;
+                    loc.filePath = filePath;
+                    loc.lineNumber = lineNum;
+                    loc.originalCode = line.trimmed();
+                    loc.canUnpin = true;
+                    
+                    if (pattern.contains("CertificatePinner")) {
+                        loc.pinType = "okhttp";
+                        loc.description = tr("OkHttp Certificate Pinning");
+                    } else if (pattern.contains("TrustManager")) {
+                        loc.pinType = "trustmanager";
+                        loc.description = tr("Custom TrustManager");
+                    } else if (pattern.contains("checkServerTrusted")) {
+                        loc.pinType = "certificate";
+                        loc.description = tr("Server Certificate Verification");
+                    } else if (pattern.contains("SslErrorHandler")) {
+                        loc.pinType = "webview";
+                        loc.description = tr("WebView SSL Handler");
+                    } else {
+                        loc.pinType = "ssl";
+                        loc.description = tr("SSL/TLS Implementation");
+                    }
+                    
+                    m_PinningLocations.append(loc);
+                    break;
+                }
+            }
+        }
+        file.close();
+    }
+}
+
+void SSLPinningDialog::searchJavaFiles()
+{
+    // Search in any decompiled Java files if present
+    QDir javaDir(m_ProjectPath);
+    QDirIterator it(javaDir.absolutePath(), QStringList() << "*.java", 
+                    QDir::Files, QDirIterator::Subdirectories);
+    
+    while (it.hasNext()) {
+        QString filePath = it.next();
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        
+        QString content = file.readAll();
+        file.close();
+        
+        if (content.contains("CertificatePinner") || 
+            content.contains("X509TrustManager") ||
+            content.contains("checkServerTrusted")) {
+            
+            PinningLocation loc;
+            loc.filePath = filePath;
+            loc.lineNumber = 1;
+            loc.pinType = "java";
+            loc.description = tr("Java SSL Implementation");
+            loc.originalCode = content.left(500);
+            loc.canUnpin = false; // Java files need recompilation
+            m_PinningLocations.append(loc);
+        }
+    }
+}
+
+void SSLPinningDialog::searchNetworkConfig()
+{
+    // Check network_security_config.xml
+    QString configPath = m_ProjectPath + "/res/xml/network_security_config.xml";
+    if (QFile::exists(configPath)) {
+        QFile file(configPath);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString content = file.readAll();
+            file.close();
+            
+            if (content.contains("pin-set") || content.contains("certificates")) {
+                PinningLocation loc;
+                loc.filePath = configPath;
+                loc.lineNumber = 1;
+                loc.pinType = "config";
+                loc.description = tr("Network Security Config Pinning");
+                loc.originalCode = content;
+                loc.canUnpin = true;
+                m_PinningLocations.append(loc);
+            }
+        }
+    }
+    
+    // Check AndroidManifest.xml for network security config reference
+    QString manifestPath = m_ProjectPath + "/AndroidManifest.xml";
+    if (QFile::exists(manifestPath)) {
+        QFile file(manifestPath);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString content = file.readAll();
+            file.close();
+            
+            if (content.contains("networkSecurityConfig")) {
+                PinningLocation loc;
+                loc.filePath = manifestPath;
+                loc.lineNumber = 1;
+                loc.pinType = "manifest";
+                loc.description = tr("Manifest Network Security Reference");
+                loc.originalCode = content.mid(content.indexOf("networkSecurityConfig") - 20, 100);
+                loc.canUnpin = true;
+                m_PinningLocations.append(loc);
+            }
+        }
+    }
+}
+
+void SSLPinningDialog::unpinAll()
+{
+    int unpinned = 0;
+    for (const auto &loc : m_PinningLocations) {
+        if (loc.canUnpin && unpinLocation(loc)) {
+            unpinned++;
+        }
+    }
+    
+    // Create permissive network security config
+    QString configContent = generateNetworkSecurityConfig();
+    QString configDir = m_ProjectPath + "/res/xml";
+    QDir().mkpath(configDir);
+    
+    QFile configFile(configDir + "/network_security_config.xml");
+    if (configFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        configFile.write(configContent.toUtf8());
+        configFile.close();
+    }
+    
+    QMessageBox::information(this, tr("Unpinning Complete"),
+        tr("Unpinned %1 location(s).\n\n"
+           "A permissive network_security_config.xml has been created.\n"
+           "Remember to add android:networkSecurityConfig=\"@xml/network_security_config\" "
+           "to your AndroidManifest.xml application tag.").arg(unpinned));
+    
+    analyzePinning(); // Refresh
+}
+
+void SSLPinningDialog::unpinSelected()
+{
+    int row = m_ResultsTable->currentRow();
+    if (row < 0 || row >= m_PinningLocations.size()) return;
+    
+    const auto &loc = m_PinningLocations[row];
+    if (unpinLocation(loc)) {
+        QMessageBox::information(this, tr("Success"), 
+            tr("Successfully unpinned location in %1").arg(loc.filePath));
+        analyzePinning();
+    } else {
+        QMessageBox::warning(this, tr("Failed"), 
+            tr("Could not unpin this location. Try manual modification."));
+    }
+}
+
+bool SSLPinningDialog::unpinLocation(const PinningLocation &location)
+{
+    if (!location.canUnpin) return false;
+    
+    QFile file(location.filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+    
+    QStringList lines;
+    QTextStream stream(&file);
+    while (!stream.atEnd()) {
+        lines << stream.readLine();
+    }
+    file.close();
+    
+    if (location.lineNumber > lines.size()) return false;
+    
+    // Modify the line based on type
+    QString &line = lines[location.lineNumber - 1];
+    
+    if (location.pinType == "trustmanager" || location.pinType == "certificate") {
+        // Comment out the line in smali
+        if (!line.trimmed().startsWith("#")) {
+            line = "# UNPINNED: " + line;
+        }
+    } else if (location.pinType == "okhttp") {
+        // Comment out CertificatePinner usage
+        if (!line.trimmed().startsWith("#")) {
+            line = "# UNPINNED: " + line;
+        }
+    }
+    
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) return false;
+    QTextStream out(&file);
+    for (const QString &l : lines) {
+        out << l << "\n";
+    }
+    file.close();
+    
+    return true;
+}
+
+void SSLPinningDialog::addCustomCert()
+{
+    QString certPath = QFileDialog::getOpenFileName(this, tr("Select Certificate"),
+        QString(), tr("Certificates (*.pem *.crt *.cer *.der);;All Files (*)"));
+    
+    if (certPath.isEmpty()) return;
+    
+    // Copy to res/raw
+    QString rawDir = m_ProjectPath + "/res/raw";
+    QDir().mkpath(rawDir);
+    
+    QString destPath = rawDir + "/custom_ca.crt";
+    if (QFile::copy(certPath, destPath)) {
+        QMessageBox::information(this, tr("Certificate Added"),
+            tr("Certificate copied to res/raw/custom_ca.crt\n\n"
+               "Update your network_security_config.xml to trust this certificate."));
+    }
+}
+
+void SSLPinningDialog::exportCertTemplate()
+{
+    createFridaScript();
+}
+
+QString SSLPinningDialog::generateTrustAllManager()
+{
+    return R"(
+.class public Lcom/apkstudio/TrustAllManager;
+.super Ljava/lang/Object;
+.implements Ljavax/net/ssl/X509TrustManager;
+
+.method public constructor <init>()V
+    .registers 1
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+    return-void
+.end method
+
+.method public checkClientTrusted([Ljava/security/cert/X509Certificate;Ljava/lang/String;)V
+    .registers 3
+    return-void
+.end method
+
+.method public checkServerTrusted([Ljava/security/cert/X509Certificate;Ljava/lang/String;)V
+    .registers 3
+    return-void
+.end method
+
+.method public getAcceptedIssuers()[Ljava/security/cert/X509Certificate;
+    .registers 2
+    const/4 v0, 0x0
+    new-array v0, v0, [Ljava/security/cert/X509Certificate;
+    return-object v0
+.end method
+)";
+}
+
+QString SSLPinningDialog::generateNetworkSecurityConfig()
+{
+    return R"(<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
+)";
+}
+
+void SSLPinningDialog::createFridaScript()
+{
+    QString script = R"(// Frida SSL Pinning Bypass Script
+// Generated by APK Studio
+
+Java.perform(function() {
+    console.log("[*] SSL Pinning Bypass Loaded");
+    
+    // OkHttp3 CertificatePinner bypass
+    try {
+        var CertificatePinner = Java.use("okhttp3.CertificatePinner");
+        CertificatePinner.check.overload('java.lang.String', 'java.util.List').implementation = function(hostname, peerCertificates) {
+            console.log("[+] OkHttp3 CertificatePinner.check() bypassed for: " + hostname);
+            return;
+        };
+        CertificatePinner.check.overload('java.lang.String', '[Ljava.security.cert.Certificate;').implementation = function(hostname, peerCertificates) {
+            console.log("[+] OkHttp3 CertificatePinner.check() bypassed for: " + hostname);
+            return;
+        };
+    } catch(e) {
+        console.log("[-] OkHttp3 not found or error: " + e);
+    }
+    
+    // TrustManager bypass
+    try {
+        var TrustManagerImpl = Java.use("com.android.org.conscrypt.TrustManagerImpl");
+        TrustManagerImpl.verifyChain.implementation = function(untrustedChain, trustAnchorChain, host, clientAuth, ocspData, tlsSctData) {
+            console.log("[+] TrustManagerImpl.verifyChain() bypassed for: " + host);
+            return untrustedChain;
+        };
+    } catch(e) {
+        console.log("[-] TrustManagerImpl not found: " + e);
+    }
+    
+    // X509TrustManager bypass
+    try {
+        var X509TrustManager = Java.use("javax.net.ssl.X509TrustManager");
+        var TrustManager = Java.registerClass({
+            name: "com.apkstudio.TrustAllManager",
+            implements: [X509TrustManager],
+            methods: {
+                checkClientTrusted: function(chain, authType) {},
+                checkServerTrusted: function(chain, authType) {},
+                getAcceptedIssuers: function() { return []; }
+            }
+        });
+    } catch(e) {
+        console.log("[-] X509TrustManager bypass error: " + e);
+    }
+    
+    // SSLContext bypass
+    try {
+        var SSLContext = Java.use("javax.net.ssl.SSLContext");
+        SSLContext.init.overload('[Ljavax.net.ssl.KeyManager;', '[Ljavax.net.ssl.TrustManager;', 'java.security.SecureRandom').implementation = function(keyManager, trustManager, secureRandom) {
+            console.log("[+] SSLContext.init() - Replacing TrustManager");
+            var TrustAllManager = Java.use("com.apkstudio.TrustAllManager");
+            var tm = TrustAllManager.$new();
+            var tmArray = Java.array('javax.net.ssl.TrustManager', [tm]);
+            this.init(keyManager, tmArray, secureRandom);
+        };
+    } catch(e) {
+        console.log("[-] SSLContext bypass error: " + e);
+    }
+    
+    // WebView SSL Error bypass
+    try {
+        var WebViewClient = Java.use("android.webkit.WebViewClient");
+        WebViewClient.onReceivedSslError.implementation = function(view, handler, error) {
+            console.log("[+] WebView SSL Error bypassed");
+            handler.proceed();
+        };
+    } catch(e) {
+        console.log("[-] WebViewClient bypass error: " + e);
+    }
+    
+    console.log("[*] SSL Pinning Bypass Complete");
+});
+)";
+
+    QString savePath = QFileDialog::getSaveFileName(this, tr("Save Frida Script"),
+        m_ProjectPath + "/frida_ssl_bypass.js", tr("JavaScript (*.js)"));
+    
+    if (!savePath.isEmpty()) {
+        QFile file(savePath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            file.write(script.toUtf8());
+            file.close();
+            QMessageBox::information(this, tr("Script Saved"),
+                tr("Frida script saved to:\n%1\n\nUsage: frida -U -f <package> -l frida_ssl_bypass.js").arg(savePath));
+        }
+    }
+}
+
+// ==================== Certificate Injector ====================
+CertificateInjectorDialog::CertificateInjectorDialog(const QString &projectPath, QWidget *parent)
+    : QDialog(parent), m_ProjectPath(projectPath)
+{
+    setWindowTitle(tr("Certificate Injector"));
+    setMinimumSize(600, 500);
+    
+    auto layout = new QVBoxLayout(this);
+    
+    auto headerLabel = new QLabel(tr(
+        "<h3>📜 Certificate Injection Tool</h3>"
+        "<p>Inject custom CA certificates into the app to intercept HTTPS traffic.</p>"
+    ), this);
+    headerLabel->setWordWrap(true);
+    layout->addWidget(headerLabel);
+    
+    // Certificate selection
+    auto certLayout = new QHBoxLayout();
+    certLayout->addWidget(new QLabel(tr("Certificate:"), this));
+    m_CertPathEdit = new QLineEdit(this);
+    m_CertPathEdit->setPlaceholderText(tr("Select a certificate file (.pem, .crt, .cer)..."));
+    certLayout->addWidget(m_CertPathEdit, 1);
+    auto browseBtn = new QPushButton(tr("Browse..."), this);
+    connect(browseBtn, &QPushButton::clicked, this, &CertificateInjectorDialog::selectCertificate);
+    certLayout->addWidget(browseBtn);
+    layout->addLayout(certLayout);
+    
+    // Options
+    auto optionsGroup = new QGroupBox(tr("Injection Options"), this);
+    auto optionsLayout = new QVBoxLayout(optionsGroup);
+    
+    m_ModifyConfigCheck = new QCheckBox(tr("Create/Modify network_security_config.xml"), this);
+    m_ModifyConfigCheck->setChecked(true);
+    optionsLayout->addWidget(m_ModifyConfigCheck);
+    
+    m_PatchTrustManagerCheck = new QCheckBox(tr("Patch TrustManager (add bypass smali)"), this);
+    optionsLayout->addWidget(m_PatchTrustManagerCheck);
+    
+    m_CreateFridaScriptCheck = new QCheckBox(tr("Generate Frida bypass script"), this);
+    optionsLayout->addWidget(m_CreateFridaScriptCheck);
+    
+    layout->addWidget(optionsGroup);
+    
+    // Preview
+    layout->addWidget(new QLabel(tr("Preview:"), this));
+    m_PreviewEdit = new QTextEdit(this);
+    m_PreviewEdit->setReadOnly(true);
+    m_PreviewEdit->setStyleSheet("font-family: monospace; background: #1e1e1e; color: #d4d4d4;");
+    layout->addWidget(m_PreviewEdit, 1);
+    
+    // Buttons
+    auto buttonLayout = new QHBoxLayout();
+    
+    auto genSelfSignedBtn = new QPushButton(tr("Generate Self-Signed Cert"), this);
+    connect(genSelfSignedBtn, &QPushButton::clicked, this, &CertificateInjectorDialog::generateSelfSigned);
+    buttonLayout->addWidget(genSelfSignedBtn);
+    
+    auto previewBtn = new QPushButton(tr("Preview Changes"), this);
+    connect(previewBtn, &QPushButton::clicked, this, &CertificateInjectorDialog::previewChanges);
+    buttonLayout->addWidget(previewBtn);
+    
+    buttonLayout->addStretch();
+    
+    auto injectBtn = new QPushButton(tr("💉 Inject"), this);
+    injectBtn->setStyleSheet("background: #0e639c; color: white; padding: 8px 16px;");
+    connect(injectBtn, &QPushButton::clicked, this, &CertificateInjectorDialog::injectCertificate);
+    buttonLayout->addWidget(injectBtn);
+    
+    auto closeBtn = new QPushButton(tr("Close"), this);
+    connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
+    buttonLayout->addWidget(closeBtn);
+    
+    layout->addLayout(buttonLayout);
+}
+
+void CertificateInjectorDialog::selectCertificate()
+{
+    QString path = QFileDialog::getOpenFileName(this, tr("Select Certificate"),
+        QString(), tr("Certificates (*.pem *.crt *.cer *.der);;All Files (*)"));
+    if (!path.isEmpty()) {
+        m_CertPathEdit->setText(path);
+        m_CertPath = path;
+        previewChanges();
+    }
+}
+
+void CertificateInjectorDialog::previewChanges()
+{
+    QString preview;
+    
+    if (m_ModifyConfigCheck->isChecked()) {
+        preview += "=== network_security_config.xml ===\n";
+        preview += R"(<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+            <certificates src="@raw/custom_ca" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
+)";
+        preview += "\n\n";
+    }
+    
+    if (m_PatchTrustManagerCheck->isChecked()) {
+        preview += "=== TrustManager Bypass (smali) ===\n";
+        preview += "Will create: smali/com/apkstudio/TrustAllManager.smali\n";
+        preview += "Will modify: SSLContext initialization calls\n\n";
+    }
+    
+    if (m_CreateFridaScriptCheck->isChecked()) {
+        preview += "=== Frida Script ===\n";
+        preview += "Will generate: frida_ssl_bypass.js\n";
+    }
+    
+    if (!m_CertPath.isEmpty()) {
+        preview += "\n=== Certificate ===\n";
+        preview += "Will copy: " + m_CertPath + "\n";
+        preview += "To: res/raw/custom_ca.crt\n";
+    }
+    
+    m_PreviewEdit->setPlainText(preview);
+}
+
+void CertificateInjectorDialog::injectCertificate()
+{
+    int changes = 0;
+    
+    if (m_ModifyConfigCheck->isChecked()) {
+        modifyNetworkSecurityConfig();
+        changes++;
+    }
+    
+    if (!m_CertPath.isEmpty()) {
+        addCertToResources();
+        changes++;
+    }
+    
+    if (m_PatchTrustManagerCheck->isChecked()) {
+        patchTrustManager();
+        changes++;
+    }
+    
+    QMessageBox::information(this, tr("Injection Complete"),
+        tr("Applied %1 modification(s).\n\nDon't forget to:\n"
+           "1. Add networkSecurityConfig to AndroidManifest.xml\n"
+           "2. Rebuild the APK\n"
+           "3. Re-sign with your certificate").arg(changes));
+}
+
+void CertificateInjectorDialog::modifyNetworkSecurityConfig()
+{
+    QString xmlDir = m_ProjectPath + "/res/xml";
+    QDir().mkpath(xmlDir);
+    
+    QString config = R"(<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+)";
+    
+    if (!m_CertPath.isEmpty()) {
+        config += "            <certificates src=\"@raw/custom_ca\" />\n";
+    }
+    
+    config += R"(        </trust-anchors>
+    </base-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
+)";
+    
+    QFile file(xmlDir + "/network_security_config.xml");
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        file.write(config.toUtf8());
+        file.close();
+    }
+}
+
+void CertificateInjectorDialog::addCertToResources()
+{
+    if (m_CertPath.isEmpty()) return;
+    
+    QString rawDir = m_ProjectPath + "/res/raw";
+    QDir().mkpath(rawDir);
+    
+    QString destPath = rawDir + "/custom_ca.crt";
+    QFile::remove(destPath); // Remove if exists
+    QFile::copy(m_CertPath, destPath);
+}
+
+void CertificateInjectorDialog::patchTrustManager()
+{
+    QString smaliDir = m_ProjectPath + "/smali/com/apkstudio";
+    QDir().mkpath(smaliDir);
+    
+    QString trustAllSmali = R"(.class public Lcom/apkstudio/TrustAllManager;
+.super Ljava/lang/Object;
+.implements Ljavax/net/ssl/X509TrustManager;
+
+.method public constructor <init>()V
+    .registers 1
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+    return-void
+.end method
+
+.method public checkClientTrusted([Ljava/security/cert/X509Certificate;Ljava/lang/String;)V
+    .registers 3
+    return-void
+.end method
+
+.method public checkServerTrusted([Ljava/security/cert/X509Certificate;Ljava/lang/String;)V
+    .registers 3
+    return-void
+.end method
+
+.method public getAcceptedIssuers()[Ljava/security/cert/X509Certificate;
+    .registers 2
+    const/4 v0, 0x0
+    new-array v0, v0, [Ljava/security/cert/X509Certificate;
+    return-object v0
+.end method
+)";
+    
+    QFile file(smaliDir + "/TrustAllManager.smali");
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        file.write(trustAllSmali.toUtf8());
+        file.close();
+    }
+}
+
+void CertificateInjectorDialog::generateSelfSigned()
+{
+    QMessageBox::information(this, tr("Generate Certificate"),
+        tr("To generate a self-signed certificate, use OpenSSL:\n\n"
+           "openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes\n\n"
+           "Then select the cert.pem file."));
 }
