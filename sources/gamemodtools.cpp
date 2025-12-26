@@ -28,6 +28,7 @@
 #include <QStandardPaths>
 #include <QTabWidget>
 #include <QTextStream>
+#include <QTimer>
 #include <QToolBar>
 
 // ============== Game Engine Detector ==============
