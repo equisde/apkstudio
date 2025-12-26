@@ -79,6 +79,7 @@ private slots:
     void openFile(const QString &path);
 
 private:
+    void updateStatusBar(const QString &msg);
     void setupActivityBar();
     void setupSidebars();
     void setupModernStyles();
