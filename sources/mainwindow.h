@@ -21,6 +21,7 @@
 #include "securityhub.h"
 #include "cloningstudio.h"
 #include "appmodstudio.h"
+#include "il2cppstudio.h"
 
 class MainWindow : public QMainWindow
 {
@@ -108,6 +109,7 @@ private:
     SecurityHub *m_SecurityHub;
     CloningStudio *m_CloningStudio;
     AppModStudio *m_AppModStudio;
+    Il2CppStudio *m_Il2CppStudio;
     
     // Status
     QLabel *m_StatusProjectInfo;

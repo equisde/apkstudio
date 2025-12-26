@@ -112,6 +112,7 @@ set(SOURCES
     sources/securityhub.cpp
     sources/cloningstudio.cpp
     sources/appmodstudio.cpp
+    sources/il2cppstudio.cpp
     sources/sourcecodeedit.cpp
     sources/splashwindow.cpp
     sources/themedsyntaxhighlighter.cpp
@@ -152,6 +153,7 @@ set(HEADERS
     sources/securityhub.h
     sources/cloningstudio.h
     sources/appmodstudio.h
+    sources/il2cppstudio.h
     sources/sourcecodeedit.h
     sources/splashwindow.h
     sources/themedsyntaxhighlighter.h

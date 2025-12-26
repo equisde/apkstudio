@@ -2,8 +2,7 @@
 #define AITOOLFACTORY_H
 
 #include <QString>
-#include <QStringList>
-#include <QMap>
+#include <QList>
 
 struct AITool {
     QString id;
@@ -18,22 +17,33 @@ public:
     static QList<AITool> getAllTools() {
         QList<AITool> tools;
         
-        // --- CATEGORÍA: SEGURIDAD DE RED ---
-        tools << AITool{"net_cert_bypass", "Security: Network", "AI Cert Bypass", "Genera parches smali para ignorar validación de certificados.", "Analiza este código smali y genera un parche para que checkServerTrusted siempre retorne void."};
-        tools << AITool{"net_proxy_detect", "Security: Network", "Proxy Detector", "Busca lógica de detección de proxies y VPNs.", "Busca patrones de System.getProperty('http.proxyHost') y sugiere bypass."};
+        // --- ECONOMY & STORES (10) ---
+        tools << AITool{"eco_iap_kill", "Economy", "IAP Global Bypass", "Anula validación de Google Play Billing.", "Localiza 'isPurchased' o 'get_IsUnlocked' y fuerza el retorno a true."};
+        tools << AITool{"eco_money_inf", "Economy", "Infinite Currency", "Busca setters de oro, gemas o monedas.", "Busca métodos 'AddCurrency' o campos '_money' y sugiere el parche para valor máximo."};
+        tools << AITool{"eco_shop_free", "Economy", "Free in-game Store", "Pone los precios de la tienda en 0.", "Analiza clases 'StoreItem' o 'Price' y cambia la lógica de resta de saldo."};
+        tools << AITool{"eco_energy_god", "Economy", "God Energy System", "Energía infinita sin esperas.", "Busca 'ConsumeEnergy' o 'm_CurrentEnergy' y anula el decremento."};
+        tools << AITool{"eco_ads_kill", "Economy", "AI Ad-Blocker", "Elimina anuncios por código.", "Busca 'ShowInterstitial' o 'AdManager' y devuelve false en los checks."};
+        tools << AITool{"eco_reward_mult", "Economy", "Reward Multiplier", "Multiplica recompensas x100.", "Busca 'CalculateReward' y multiplica el retorno por una constante masiva."};
+        tools << AITool{"eco_level_unlock", "Economy", "Instant Level Unlock", "Desbloquea todos los niveles.", "Busca 'IsLevelLocked' y haz que siempre retorne false."};
         
-        // --- CATEGORÍA: ANTI-TAMPERING ---
-        tools << AITool{"tamp_sig_check", "Security: Tampering", "Sig-Check Killer", "Localiza y anula la verificación de firma del APK.", "Identifica el método que compara el Signature[] y haz que siempre devuelva true."};
-        tools << AITool{"tamp_root_bypass", "Security: Tampering", "Root Cloak IA", "Inyecta código para ocultar el root a la app.", "Busca archivos como /system/app/Superuser.apk en el código y ofusca la búsqueda."};
+        // --- PLAYER & COMBAT (10) ---
+        tools << AITool{"ply_god_mode", "Combat", "God Mode (HP)", "Invulnerabilidad total.", "Localiza 'TakeDamage' o 'm_Health' y haz que el daño recibido sea 0."};
+        tools << AITool{"ply_one_hit", "Combat", "One-Hit Kill", "Daño masivo a enemigos.", "Busca 'GetAttackPower' y multiplica el resultado por 999999."};
+        tools << AITool{"ply_speed_hack", "Combat", "AI Speed Engine", "Velocidad de movimiento x2.", "Busca 'moveSpeed', 'walkSpeed' o 'velocity' y genera un offset de incremento."};
+        tools << AITool{"ply_no_recoil", "Combat", "Zero Recoil", "Elimina el retroceso de armas.", "Busca 'RecoilAmount' o 'ShakeCamera' y anula la función."};
+        tools << AITool{"ply_inf_ammo", "Combat", "Infinite Ammo", "Munición que nunca baja.", "Busca 'ConsumeAmmo' o 'DecrementClip' y 'nopea' la resta."};
+        tools << AITool{"ply_range_ext", "Combat", "Range Extender", "Aumenta el rango de ataque.", "Busca variables de 'AttackRange' o 'Distance' y duplica su valor."};
+
+        // --- IL2CPP REVERSING (10) ---
+        tools << AITool{"rev_offset_map", "Reversing", "Offset Mapper Pro", "Calcula RVA a Offset real.", "Toma la dirección del dump y el VA del binario para dar el offset de parcheo exacto."};
+        tools << AITool{"rev_class_dissect", "Reversing", "Class Dissector", "Analiza variables del Jugador.", "Extrae todos los campos de la clase Player y deduce cuáles son las stats locales."};
+        tools << AITool{"rev_anti_cheat", "Reversing", "Anti-Cheat Killer", "Anula SafetyNet/Integrity.", "Busca 'IsRooted', 'isEmulator' o 'checkIntegrity' y genera el bypass."};
+        tools << AITool{"rev_string_pool", "Reversing", "String Finder", "Busca strings sensibles.", "Escanea el string pool en busca de llaves de API o URLs de servidores."};
+
+        // --- AUTOMATION & MOD MENU (5) ---
+        tools << AITool{"auto_modmenu_cpp", "Automation", "C++ ModMenu Gen", "Genera código para menú nativo.", "Crea un archivo modmenu.cpp profesional con toggles para los offsets encontrados."};
+        tools << AITool{"auto_java_ui", "Automation", "Java UI Architect", "Crea UI flotante para Android.", "Genera una clase FloatingWindowService con switches funcionales."};
         
-        // --- CATEGORÍA: GAME MODDING ---
-        tools << AITool{"game_unity_speed", "Game Modding", "Unity SpeedHack", "Inyecta un multiplicador de Time.timeScale.", "Busca la clase UnityEngine.Time y genera un hook para modificar timeScale."};
-        tools << AITool{"game_val_search", "Game Modding", "AI Value Hunter", "Encuentra offsets de monedas y diamantes en archivos metadata.", "Analiza los símbolos de este dump y busca patrones de 'Coin', 'Gem', 'Gold'."};
-        
-        // --- CATEGORÍA: APK CLONING ---
-        tools << AITool{"clone_pkg_rename", "Cloning", "Stellar Renamer", "Renombra el package name de forma recursiva e inteligente.", "Cambia todos los strings de package name evitando romper librerías nativas."};
-        
-        // ... (Hasta completar las 30 herramientas)
         return tools;
     }
 };

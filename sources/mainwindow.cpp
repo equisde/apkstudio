@@ -193,9 +193,11 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     m_AppModStudio = new AppModStudio(path);
     m_SidebarStack->insertWidget(AppMod, m_AppModStudio);
 
-    // Game Modding Studio
-    auto gameModStudio = new GameModStudio(path);
-    m_SidebarStack->insertWidget(GameModding, gameModStudio);
+    // Il2Cpp Studio Pro Integration
+    m_SidebarStack->removeWidget(m_Il2CppStudio);
+    if(m_Il2CppStudio) m_Il2CppStudio->deleteLater();
+    m_Il2CppStudio = new Il2CppStudio(path);
+    m_SidebarStack->insertWidget(GameModding, m_Il2CppStudio);
 
     // 3. Actualizar Explorador
     m_ExplorerTree->clear();
