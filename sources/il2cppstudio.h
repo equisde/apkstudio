@@ -20,10 +20,11 @@ private slots:
     void loadDumpFile();
     void runAiTool();
     void generateModMenu();
+
+private:
     void logMessage(const QString &msg);
     void askAI(const QString &prompt, std::function<void(const QString&)> callback);
 
-private:
     QString m_ProjectPath;
     QString m_DumpContent;
     QListWidget *m_ToolsList;
