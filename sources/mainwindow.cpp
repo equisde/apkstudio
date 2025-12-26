@@ -190,6 +190,10 @@ void MainWindow::toggleSidebar(bool visible) {
     m_SidebarContainer->setVisible(visible);
 }
 
+void MainWindow::updateStatusBar(const QString &msg) {
+    statusBar()->showMessage(msg);
+}
+
 void MainWindow::handleActionApk() {
     QString path = QFileDialog::getOpenFileName(this, tr("Select APK"), "", "APKs (*.apk)");
     if (!path.isEmpty()) openApkFile(path);

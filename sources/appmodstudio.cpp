@@ -23,6 +23,10 @@ AppModStudio::AppModStudio(const QString &projectPath, QWidget *parent)
     connect(btnScan, &QPushButton::clicked, this, &AppModStudio::scanForPremiumLogic);
     innerLayout->addWidget(btnScan);
 
+    auto btnAiSuggest = new QPushButton(tr("💡 AI Suggest Modifications"));
+    connect(btnAiSuggest, &QPushButton::clicked, this, &AppModStudio::aiSuggestModifications);
+    innerLayout->addWidget(btnAiSuggest);
+
     layout->addWidget(group);
 
     m_AiLog = new QTextBrowser();
