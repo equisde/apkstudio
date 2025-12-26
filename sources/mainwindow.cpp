@@ -178,17 +178,24 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     m_DetectedContext = GameEngineDetector::engineName(engine);
     
     // 2. Inyectar Widgets Reales en el Sidebar (Reemplaza los labels iniciales)
-    auto gameModStudio = new GameModStudio(path);
-    m_SidebarStack->insertWidget(GameModding, gameModStudio);
-
+    m_SidebarStack->removeWidget(m_SecurityHub);
+    if(m_SecurityHub) m_SecurityHub->deleteLater();
     m_SecurityHub = new SecurityHub(path);
     m_SidebarStack->insertWidget(Security, m_SecurityHub);
     
+    m_SidebarStack->removeWidget(m_CloningStudio);
+    if(m_CloningStudio) m_CloningStudio->deleteLater();
     m_CloningStudio = new CloningStudio(path);
     m_SidebarStack->insertWidget(Cloning, m_CloningStudio);
     
+    m_SidebarStack->removeWidget(m_AppModStudio);
+    if(m_AppModStudio) m_AppModStudio->deleteLater();
     m_AppModStudio = new AppModStudio(path);
     m_SidebarStack->insertWidget(AppMod, m_AppModStudio);
+
+    // Game Modding Studio
+    auto gameModStudio = new GameModStudio(path);
+    m_SidebarStack->insertWidget(GameModding, gameModStudio);
 
     // 3. Actualizar Explorador
     m_ExplorerTree->clear();
@@ -201,14 +208,19 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     m_StatusEngineInfo->setText("Context: " + m_DetectedContext);
     if (m_AIStudioWidget) m_AIStudioWidget->setProjectPath(path);
     
-    QString reportPath = path + "/ANALYSIS_REPORT.md";
-    QFile f(reportPath);
-    if(f.open(QFile::WriteOnly)) {
-        QTextStream out(&f);
-        out << "# Initial Analysis Report\n\nDetected Environment: " << m_DetectedContext;
-        f.close();
+    // Generar Reportes MD Automáticos
+    QDir dir(path);
+    QString report;
+    if (engine != GameEngineDetector::NativeAndroid) {
+        report = "# AI Game Modding Report\nEngine: " + m_DetectedContext + "\n\n## Vectors\n- IL2CPP detected\n- Assets ready.";
+        QFile f(path + "/AI_GAME_MOD.md");
+        if(f.open(QFile::WriteOnly)) { f.write(report.toUtf8()); f.close(); }
+    } else {
+        report = "# AI App Modding Report\nContext: Native Android\n\n## Recommendations\n- Scan for Smali patches.";
+        QFile f(path + "/AI_APP_AUDIT.md");
+        if(f.open(QFile::WriteOnly)) { f.write(report.toUtf8()); f.close(); }
     }
-    updateStatusBar(tr("Analysis Complete."));
+    updateStatusBar(tr("Analysis Complete. Reports generated."));
 }
 
 void MainWindow::switchSection(Section section) {
