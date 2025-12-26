@@ -76,7 +76,6 @@ set(SOURCES
     sources/apksignworker.cpp
     sources/appearancesettingswidget.cpp
     sources/binarysettingswidget.cpp
-    sources/desktopdatabaseupdateworker.cpp
     sources/devicelistworker.cpp
     sources/deviceselectiondialog.cpp
     sources/findreplacedialog.cpp
@@ -106,7 +105,6 @@ set(HEADERS
     sources/apksignworker.h
     sources/appearancesettingswidget.h
     sources/binarysettingswidget.h
-    sources/desktopdatabaseupdateworker.h
     sources/devicelistworker.h
     sources/deviceselectiondialog.h
     sources/findreplacedialog.h
