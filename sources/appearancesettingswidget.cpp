@@ -63,7 +63,7 @@ void AppearanceSettingsWidget::save()
         QPushButton *restartBtn = msgBox.addButton(tr("Restart"), QMessageBox::AcceptRole);
         msgBox.addButton(QMessageBox::Ok);
         msgBox.exec();
-        if (msgBox.clickedButton() == restartBtn) {
+        if (msgBox.clickedButton() == static_cast<QAbstractButton *>(restartBtn)) {
             QApplication::exit(CODE_RESTART);
         }
     }

@@ -172,6 +172,19 @@ AISettingsWidget::AISettingsWidget(QWidget *parent)
     
     m_CheckAutoAnalyze = new QCheckBox(tr("Automatically analyze projects when opened"), this);
     analysisLayout->addWidget(m_CheckAutoAnalyze);
+
+    m_CheckAutoFix = new QCheckBox(tr("Automatically suggest fixes for common bugs"), this);
+    m_CheckAutoFix->setChecked(settings.value("ai_auto_fix", false).toBool());
+    analysisLayout->addWidget(m_CheckAutoFix);
+
+    auto slangLayout = new QHBoxLayout();
+    slangLayout->addWidget(new QLabel(tr("AI Slang/Colloquial Level:")));
+    m_ComboSlang = new QComboBox();
+    m_ComboSlang->addItem(tr("Professional"), "pro");
+    m_ComboSlang->addItem(tr("Colloquial/Hacker"), "slang");
+    m_ComboSlang->setCurrentText(settings.value("ai_slang_level", "slang").toString());
+    slangLayout->addWidget(m_ComboSlang);
+    analysisLayout->addLayout(slangLayout);
     
     auto infoLabel = new QLabel(tr(
         "<p style='color: #888; font-size: 11px;'>"
@@ -706,6 +719,8 @@ void AISettingsWidget::save()
     settings.setValue("ai_api_key", m_EditApiKey->text());
     settings.setValue("ai_model", m_EditModel->text());
     settings.setValue("ai_auto_analyze", m_CheckAutoAnalyze->isChecked());
+    settings.setValue("ai_auto_fix", m_CheckAutoFix->isChecked());
+    settings.setValue("ai_slang_level", m_ComboSlang->currentData().toString());
     settings.setValue("ai_use_cli_agent", m_CheckUseCliAgent->isChecked());
     settings.sync();
 }

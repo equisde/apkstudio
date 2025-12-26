@@ -57,8 +57,10 @@ private:
     QLineEdit *m_EditApiKey;
     QLineEdit *m_EditModel;
     QCheckBox *m_CheckAutoAnalyze;
+    QCheckBox *m_CheckAutoFix;
     QCheckBox *m_CheckEnabled;
     QCheckBox *m_CheckUseCliAgent;
+    QComboBox *m_ComboSlang;
     QLabel *m_CliStatusLabel;
     QTextEdit *m_DetailedStatus;
     QPushButton *m_InstallCliButton;
