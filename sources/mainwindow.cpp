@@ -184,7 +184,21 @@ QWidget *MainWindow::buildCentralWidget()
 
 QDockWidget *MainWindow::buildConsoleDock()
 {
-    auto dock = new QDockWidget(tr("Console"), this);
+    auto dock = new QDockWidget(tr("TERMINAL"), this);
+    dock->setStyleSheet(R"(
+        QDockWidget {
+            font-size: 11px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+        QDockWidget::title {
+            background: #252526;
+            padding: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    )");
+    
     QFont font;
 #ifdef Q_OS_WIN
     font.setFamily("Cascadia Code");
@@ -194,24 +208,26 @@ QDockWidget *MainWindow::buildConsoleDock()
     font.setFamily("JetBrains Mono");
 #endif
     font.setFixedPitch(true);
-    font.setPointSize(10);
+    font.setPointSize(11);
     font.setStyleHint(QFont::Monospace);
     QFontMetrics metrics(font);
-    QPalette palette;
-    palette.setColor(QPalette::Active, QPalette::Base, QColor("#1a1a2e"));
-    palette.setColor(QPalette::Inactive, QPalette::Base, QColor("#16213e"));
-    palette.setColor(QPalette::Active, QPalette::Text, QColor("#e8e8e8"));
-    palette.setColor(QPalette::Inactive, QPalette::Text, QColor("#c8c8c8"));
+    
     m_EditConsole = new QTextEdit(this);
     m_EditConsole->setFont(font);
     m_EditConsole->setFrameStyle(QFrame::NoFrame);
-    m_EditConsole->setPalette(palette);
+    m_EditConsole->setStyleSheet(R"(
+        QTextEdit {
+            background: #1e1e1e;
+            color: #cccccc;
+            border: none;
+            padding: 8px;
+        }
+    )");
     m_EditConsole->setReadOnly(true);
     m_EditConsole->setTabStopDistance(4 * metrics.horizontalAdvance('8'));
     m_EditConsole->setWordWrapMode(QTextOption::NoWrap);
     connect(ProcessOutput::instance(), &ProcessOutput::commandFinished, this, &MainWindow::handleCommandFinished);
     connect(ProcessOutput::instance(), &ProcessOutput::commandStarting, this, &MainWindow::handleCommandStarting);
-    setContentsMargins(2, 2, 2, 2);
     dock->setObjectName("ConsoleDock");
     dock->setWidget(m_EditConsole);
     return dock;
@@ -219,26 +235,68 @@ QDockWidget *MainWindow::buildConsoleDock()
 
 QDockWidget *MainWindow::buildAIDock()
 {
-    auto dock = new QDockWidget(tr("AI Assistant"), this);
+    auto dock = new QDockWidget(tr("AI ASSISTANT"), this);
+    dock->setStyleSheet(R"(
+        QDockWidget {
+            font-size: 11px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+        QDockWidget::title {
+            background: #252526;
+            padding: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    )");
     m_AIConsole = new AIConsoleWidget(this);
     connect(m_AIConsole, &AIConsoleWidget::analysisComplete, this, &MainWindow::handleAIAnalysisComplete);
     dock->setObjectName("AIDock");
     dock->setWidget(m_AIConsole);
-    dock->setMinimumWidth(350);
+    dock->setMinimumWidth(380);
     return dock;
 }
 
 QDockWidget *MainWindow::buildFilesDock()
 {
-    auto dock = new QDockWidget(tr("Files"), this);
+    auto dock = new QDockWidget(tr("OPEN EDITORS"), this);
+    dock->setStyleSheet(R"(
+        QDockWidget {
+            font-size: 11px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+        QDockWidget::title {
+            background: #252526;
+            padding: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    )");
+    
     auto widget = new QWidget(this);
+    widget->setStyleSheet("background: #252526;");
     auto layout = new QVBoxLayout(widget);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(2);
+    layout->setSpacing(0);
     
     m_SearchFiles = new QLineEdit(this);
-    m_SearchFiles->setPlaceholderText(tr("Search in open files..."));
+    m_SearchFiles->setPlaceholderText(tr("Filter open files..."));
     m_SearchFiles->setClearButtonEnabled(true);
+    m_SearchFiles->setStyleSheet(R"(
+        QLineEdit {
+            background: #3c3c3c;
+            border: 1px solid #3c3c3c;
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin: 8px;
+            color: #cccccc;
+            font-size: 12px;
+        }
+        QLineEdit:focus {
+            border-color: #0e639c;
+        }
+    )");
     connect(m_SearchFiles, &QLineEdit::textChanged, this, &MainWindow::handleFilesSearchChanged);
     layout->addWidget(m_SearchFiles);
     
@@ -246,6 +304,23 @@ QDockWidget *MainWindow::buildFilesDock()
     m_ListOpenFiles->setContextMenuPolicy(Qt::CustomContextMenu);
     m_ListOpenFiles->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_ListOpenFiles->setMinimumWidth(240);
+    m_ListOpenFiles->setStyleSheet(R"(
+        QListView {
+            background: #252526;
+            border: none;
+            color: #cccccc;
+            font-size: 13px;
+        }
+        QListView::item {
+            padding: 6px 8px;
+        }
+        QListView::item:hover {
+            background: #2a2d2e;
+        }
+        QListView::item:selected {
+            background: #094771;
+        }
+    )");
     m_ModelOpenFiles = new QStandardItemModel(m_ListOpenFiles);
     m_FilesProxyModel = new QSortFilterProxyModel(this);
     m_FilesProxyModel->setSourceModel(m_ModelOpenFiles);
@@ -254,7 +329,6 @@ QDockWidget *MainWindow::buildFilesDock()
     m_ListOpenFiles->setModel(m_FilesProxyModel);
     m_ListOpenFiles->setSelectionBehavior(QAbstractItemView::SelectItems);
     m_ListOpenFiles->setSelectionMode(QAbstractItemView::SingleSelection);
-    // Get selection model after model is set to ensure it uses proxy model indices
     QItemSelectionModel *selectionModel = m_ListOpenFiles->selectionModel();
     if (selectionModel) {
         connect(selectionModel, &QItemSelectionModel::selectionChanged, this, &MainWindow::handleFilesSelectionChanged);
@@ -269,7 +343,28 @@ QDockWidget *MainWindow::buildFilesDock()
 
 QToolBar *MainWindow::buildMainToolBar()
 {
-    auto toolbar = new QToolBar(tr("Sidebar"), this);
+    auto toolbar = new QToolBar(tr("Activity Bar"), this);
+    toolbar->setStyleSheet(R"(
+        QToolBar {
+            background: #333333;
+            border: none;
+            spacing: 0;
+        }
+        QToolButton {
+            background: transparent;
+            border: none;
+            padding: 12px;
+            margin: 0;
+        }
+        QToolButton:hover {
+            background: #505050;
+        }
+        QToolButton:checked {
+            border-left: 2px solid #ffffff;
+            background: #252526;
+        }
+    )");
+    toolbar->setIconSize(QSize(24, 24));
     toolbar->addAction(QIcon(":/icons/icons8/icons8-android-os-48.png"), tr("Open APK"), this, &MainWindow::handleActionApk);
     toolbar->addAction(QIcon(":/icons/icons8/icons8-folder-48.png"), tr("Open folder"), this, &MainWindow::handleActionFolder);
     toolbar->addSeparator();
@@ -396,15 +491,44 @@ QMenuBar *MainWindow::buildMenuBar()
 
 QDockWidget *MainWindow::buildProjectsDock()
 {
-    auto dock = new QDockWidget(tr("Projects"), this);
+    auto dock = new QDockWidget(tr("EXPLORER"), this);
+    dock->setStyleSheet(R"(
+        QDockWidget {
+            font-size: 11px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+        QDockWidget::title {
+            background: #252526;
+            padding: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    )");
+    
     auto widget = new QWidget(this);
+    widget->setStyleSheet("background: #252526;");
     auto layout = new QVBoxLayout(widget);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(2);
+    layout->setSpacing(0);
     
     m_SearchProjects = new QLineEdit(this);
-    m_SearchProjects->setPlaceholderText(tr("Search in project..."));
+    m_SearchProjects->setPlaceholderText(tr("Search files..."));
     m_SearchProjects->setClearButtonEnabled(true);
+    m_SearchProjects->setStyleSheet(R"(
+        QLineEdit {
+            background: #3c3c3c;
+            border: 1px solid #3c3c3c;
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin: 8px;
+            color: #cccccc;
+            font-size: 12px;
+        }
+        QLineEdit:focus {
+            border-color: #0e639c;
+        }
+    )");
     connect(m_SearchProjects, &QLineEdit::textChanged, this, &MainWindow::handleProjectsSearchChanged);
     layout->addWidget(m_SearchProjects);
     
@@ -416,6 +540,33 @@ QDockWidget *MainWindow::buildProjectsDock()
     m_ProjectsTree->setSelectionBehavior(QAbstractItemView::SelectItems);
     m_ProjectsTree->setSelectionMode(QAbstractItemView::SingleSelection);
     m_ProjectsTree->setSortingEnabled(false);
+    m_ProjectsTree->setIndentation(16);
+    m_ProjectsTree->setAnimated(true);
+    m_ProjectsTree->setStyleSheet(R"(
+        QTreeWidget {
+            background: #252526;
+            border: none;
+            color: #cccccc;
+            font-size: 13px;
+        }
+        QTreeWidget::item {
+            padding: 4px 0;
+        }
+        QTreeWidget::item:hover {
+            background: #2a2d2e;
+        }
+        QTreeWidget::item:selected {
+            background: #094771;
+        }
+        QTreeWidget::branch:has-children:!has-siblings:closed,
+        QTreeWidget::branch:closed:has-children:has-siblings {
+            image: url(:/icons/chevron-right.png);
+        }
+        QTreeWidget::branch:open:has-children:!has-siblings,
+        QTreeWidget::branch:open:has-children:has-siblings {
+            image: url(:/icons/chevron-down.png);
+        }
+    )");
     connect(m_ProjectsTree, &QTreeWidget::customContextMenuRequested, this, &MainWindow::handleTreeContextMenu);
     connect(m_ProjectsTree, &QTreeWidget::doubleClicked, this, &MainWindow::handleTreeDoubleClicked);
     connect(m_ProjectsTree->selectionModel(), &QItemSelectionModel::selectionChanged, this, &MainWindow::handleTreeSelectionChanged);
@@ -431,26 +582,32 @@ QStatusBar *MainWindow::buildStatusBar(const QMap<QString, QString> &versions)
 {
     auto buildSeparator = [=] {
         auto frame = new QFrame(this);
-        frame->setFrameStyle(QFrame::VLine);
-        frame->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding);
+        frame->setStyleSheet("background: #3c3c3c;");
+        frame->setFixedWidth(1);
+        frame->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         return frame;
     };
     auto statusbar = new QStatusBar(this);
-    statusbar->addPermanentWidget(new QLabel(tr("Java").append(": ").append(versions["java"]), this));
+    statusbar->setStyleSheet(R"(
+        QStatusBar {
+            background: #007acc;
+            color: white;
+            font-size: 12px;
+        }
+        QStatusBar::item { border: none; }
+        QLabel { color: white; padding: 0 8px; }
+    )");
+    statusbar->addPermanentWidget(new QLabel(QString("Java %1").arg(versions["java"]), this));
     statusbar->addPermanentWidget(buildSeparator());
-    statusbar->addPermanentWidget(new QLabel(tr("Apktool").append(": ").append(versions["apktool"]), this));
+    statusbar->addPermanentWidget(new QLabel(QString("Apktool %1").arg(versions["apktool"]), this));
     statusbar->addPermanentWidget(buildSeparator());
-    statusbar->addPermanentWidget(new QLabel(tr("Jadx").append(": ").append(versions["jadx"]), this));
-    statusbar->addPermanentWidget(buildSeparator());
-    statusbar->addPermanentWidget(new QLabel(tr("ADB").append(": ").append(versions["adb"]), this));
-    statusbar->addPermanentWidget(buildSeparator());
-    statusbar->addPermanentWidget(new QLabel(tr("Uber APK Signer").append(": ").append(versions["uas"]), this));
+    statusbar->addPermanentWidget(new QLabel(QString("Jadx %1").arg(versions["jadx"]), this));
     statusbar->addPermanentWidget(new QWidget(this), 1);
-    statusbar->addPermanentWidget(m_StatusCursor = new QLabel("0:0", this));
+    statusbar->addPermanentWidget(m_StatusCursor = new QLabel("Ln 0, Col 0", this));
     statusbar->addPermanentWidget(buildSeparator());
-    statusbar->addPermanentWidget(m_StatusMessage = new QLabel(tr("Ready!"), this));
-    statusbar->setContentsMargins(4, 4, 4, 4);
-    statusbar->setStyleSheet("QStatusBar::item { border: none; }");
+    statusbar->addPermanentWidget(m_StatusMessage = new QLabel(tr("Ready"), this));
+    statusbar->setContentsMargins(0, 0, 0, 0);
+    statusbar->setFixedHeight(24);
     return statusbar;
 }
 
@@ -556,15 +713,70 @@ void MainWindow::handleActionAntiSplit()
 void MainWindow::handleActionApk()
 {
     const QString path = QFileDialog::getOpenFileName(this,
-                                                      tr("Browse APK"),
+                                                      tr("Open APK or Split APK Bundle"),
                                                       QString(),
-                                                      tr("Android APK File(s) (*.apk)"));
+                                                      tr("Android Package Files (*.apk *.xapk *.apks *.apkm);;APK Files (*.apk);;Split APK Bundles (*.xapk *.apks *.apkm);;All Files (*)"));
 #ifdef QT_DEBUG
     qDebug() << "User selected to open" << path;
 #endif
     if (!path.isEmpty()) {
-        openApkFile(path);
+        QFileInfo info(path);
+        QString ext = info.suffix().toLower();
+        
+        if (ext == "xapk" || ext == "apks" || ext == "apkm") {
+            // Split APK bundle - need to antisplit first
+            handleSplitApkOpen(path);
+        } else {
+            openApkFile(path);
+        }
     }
+}
+
+void MainWindow::handleSplitApkOpen(const QString &bundlePath)
+{
+    // Generate output path
+    QFileInfo info(bundlePath);
+    QString outputPath = info.absolutePath() + "/" + info.baseName() + "_merged.apk";
+    
+    m_StatusMessage->setText(tr("Merging split APK bundle..."));
+    
+    auto thread = new QThread();
+    auto worker = new AntiSplitWorker(QStringList() << bundlePath, outputPath, false);
+    worker->moveToThread(thread);
+    
+    connect(worker, &AntiSplitWorker::mergeFailed, this, [this](const QString &error) {
+        m_ProgressDialog->close();
+        m_ProgressDialog->deleteLater();
+        m_StatusMessage->setText(tr("Merge failed."));
+        QMessageBox::warning(this, tr("AntiSplit Failed"), error);
+    });
+    
+    connect(worker, &AntiSplitWorker::mergeFinished, this, [this](const QString &outputFile) {
+        m_ProgressDialog->close();
+        m_ProgressDialog->deleteLater();
+        m_StatusMessage->setText(tr("Merge complete. Opening APK..."));
+        // Now open the merged APK for decompilation
+        openApkFile(outputFile);
+    });
+    
+    connect(worker, &AntiSplitWorker::mergeProgress, this, [this](int percent, const QString &message) {
+        m_ProgressDialog->setLabelText(message);
+        m_ProgressDialog->setValue(percent);
+    });
+    
+    connect(thread, &QThread::started, worker, &AntiSplitWorker::merge);
+    connect(worker, &AntiSplitWorker::finished, thread, &QThread::quit);
+    connect(worker, &AntiSplitWorker::finished, worker, &QObject::deleteLater);
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+    
+    m_ProgressDialog = new QProgressDialog(this);
+    m_ProgressDialog->setCancelButton(nullptr);
+    m_ProgressDialog->setLabelText(tr("Extracting and merging split APKs..."));
+    m_ProgressDialog->setRange(0, 100);
+    m_ProgressDialog->setWindowFlags(m_ProgressDialog->windowFlags() & ~Qt::WindowCloseButtonHint);
+    m_ProgressDialog->setWindowTitle(tr("Opening Split APK"));
+    m_ProgressDialog->exec();
 }
 
 void MainWindow::openApkFile(const QString &apkPath)

@@ -8,11 +8,91 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QSettings>
 #include <QTextStream>
 #include <QVBoxLayout>
 #include "aiconsolewidget.h"
+
+// CSS for the AI console
+static const char* AI_CONSOLE_CSS = R"(
+body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0;
+    padding: 8px;
+    background: #1e1e1e;
+    color: #d4d4d4;
+}
+.message {
+    margin-bottom: 16px;
+    padding: 12px;
+    border-radius: 8px;
+}
+.user-message {
+    background: #264f78;
+    border-left: 3px solid #569cd6;
+}
+.ai-message {
+    background: #252526;
+    border-left: 3px solid #4ec9b0;
+}
+.system-message {
+    background: #3c3c3c;
+    border-left: 3px solid #dcdcaa;
+    font-size: 12px;
+    color: #9cdcfe;
+}
+.role {
+    font-weight: bold;
+    margin-bottom: 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.user-role { color: #569cd6; }
+.ai-role { color: #4ec9b0; }
+.system-role { color: #dcdcaa; }
+.timestamp {
+    font-size: 10px;
+    color: #808080;
+    float: right;
+}
+.content { white-space: pre-wrap; }
+code {
+    font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    background: #1e1e1e;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+pre {
+    background: #1e1e1e;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    border: 1px solid #3c3c3c;
+}
+pre code {
+    background: none;
+    padding: 0;
+}
+h1, h2, h3, h4 { color: #4ec9b0; margin: 16px 0 8px 0; }
+h1 { font-size: 1.4em; border-bottom: 1px solid #3c3c3c; padding-bottom: 6px; }
+h2 { font-size: 1.2em; }
+h3 { font-size: 1.1em; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin: 4px 0; }
+strong { color: #ce9178; }
+em { color: #c586c0; }
+a { color: #569cd6; }
+hr { border: none; border-top: 1px solid #3c3c3c; margin: 16px 0; }
+.warning { background: #4d3800; border-left-color: #cca700; }
+.error { background: #4d1f1f; border-left-color: #f14c4c; }
+.success { background: #1f4d1f; border-left-color: #4ec9b0; }
+)";
 
 AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     : QWidget(parent), m_CurrentReply(nullptr)
@@ -21,13 +101,115 @@ AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     
     auto layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(4);
+    layout->setSpacing(0);
     
-    // Header with buttons
-    auto headerLayout = new QHBoxLayout();
-    auto titleLabel = new QLabel(tr("🤖 AI Assistant"), this);
-    titleLabel->setStyleSheet("font-weight: bold; font-size: 13px;");
+    // Header with buttons - VS Code style
+    auto headerWidget = new QWidget(this);
+    headerWidget->setStyleSheet("background: #252526; border-bottom: 1px solid #3c3c3c;");
+    auto headerLayout = new QHBoxLayout(headerWidget);
+    headerLayout->setContentsMargins(12, 8, 12, 8);
+    
+    auto titleLabel = new QLabel(tr("AI ASSISTANT"), this);
+    titleLabel->setStyleSheet("font-weight: 600; font-size: 11px; color: #cccccc; letter-spacing: 1px;");
     headerLayout->addWidget(titleLabel);
+    headerLayout->addStretch();
+    
+    m_AnalyzeButton = new QPushButton(tr("⚡ Analyze"), this);
+    m_AnalyzeButton->setStyleSheet(R"(
+        QPushButton {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+        QPushButton:hover { background: #1177bb; }
+        QPushButton:pressed { background: #0d5a8c; }
+        QPushButton:disabled { background: #3c3c3c; color: #808080; }
+    )");
+    connect(m_AnalyzeButton, &QPushButton::clicked, this, &AIConsoleWidget::analyzeProject);
+    headerLayout->addWidget(m_AnalyzeButton);
+    
+    m_ClearButton = new QPushButton(tr("Clear"), this);
+    m_ClearButton->setStyleSheet(R"(
+        QPushButton {
+            background: transparent;
+            color: #cccccc;
+            border: 1px solid #3c3c3c;
+            padding: 4px 12px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+        QPushButton:hover { background: #3c3c3c; }
+    )");
+    connect(m_ClearButton, &QPushButton::clicked, this, &AIConsoleWidget::clear);
+    headerLayout->addWidget(m_ClearButton);
+    
+    layout->addWidget(headerWidget);
+    
+    // Console output - using QTextBrowser for HTML
+    m_OutputConsole = new QTextBrowser(this);
+    m_OutputConsole->setOpenExternalLinks(true);
+    m_OutputConsole->setFrameStyle(QFrame::NoFrame);
+    m_OutputConsole->setStyleSheet("background: #1e1e1e; border: none;");
+    
+    // Initialize HTML content
+    m_HtmlContent = QString("<html><head><style>%1</style></head><body>").arg(AI_CONSOLE_CSS);
+    m_HtmlContent += "<div class='message system-message'>";
+    m_HtmlContent += "<div class='content'>Welcome to AI Assistant! Configure your API key in <strong>Settings → AI Assistant</strong> to get started.</div>";
+    m_HtmlContent += "</div>";
+    m_OutputConsole->setHtml(m_HtmlContent + "</body></html>");
+    
+    layout->addWidget(m_OutputConsole, 1);
+    
+    // Input area - VS Code style
+    auto inputWidget = new QWidget(this);
+    inputWidget->setStyleSheet("background: #252526; border-top: 1px solid #3c3c3c;");
+    auto inputLayout = new QHBoxLayout(inputWidget);
+    inputLayout->setContentsMargins(8, 8, 8, 8);
+    inputLayout->setSpacing(8);
+    
+    m_InputLine = new QLineEdit(this);
+    m_InputLine->setPlaceholderText(tr("Ask AI about this project..."));
+    m_InputLine->setStyleSheet(R"(
+        QLineEdit {
+            background: #3c3c3c;
+            border: 1px solid #3c3c3c;
+            border-radius: 4px;
+            padding: 8px 12px;
+            color: #cccccc;
+            font-size: 13px;
+        }
+        QLineEdit:focus {
+            border-color: #0e639c;
+        }
+    )");
+    connect(m_InputLine, &QLineEdit::returnPressed, this, &AIConsoleWidget::handleSendMessage);
+    inputLayout->addWidget(m_InputLine);
+    
+    m_SendButton = new QPushButton(tr("→"), this);
+    m_SendButton->setFixedSize(36, 36);
+    m_SendButton->setStyleSheet(R"(
+        QPushButton {
+            background: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        QPushButton:hover { background: #1177bb; }
+        QPushButton:pressed { background: #0d5a8c; }
+        QPushButton:disabled { background: #3c3c3c; color: #808080; }
+    )");
+    connect(m_SendButton, &QPushButton::clicked, this, &AIConsoleWidget::handleSendMessage);
+    inputLayout->addWidget(m_SendButton);
+    
+    layout->addWidget(inputWidget);
+    
+    // Check if AI is enabled
+    QSettings settings;
     headerLayout->addStretch();
     
     m_AnalyzeButton = new QPushButton(tr("Analyze Project"), this);
@@ -237,32 +419,102 @@ QString AIConsoleWidget::buildProjectContext()
 void AIConsoleWidget::appendMessage(const QString &role, const QString &message)
 {
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-    QString formattedRole = role.toUpper();
+    QString messageClass, roleClass, roleText;
     
-    QString html;
     if (role == "user") {
-        html = QString("[%1] 👤 YOU:\n%2\n\n").arg(timestamp, message);
+        messageClass = "user-message";
+        roleClass = "user-role";
+        roleText = "YOU";
     } else if (role == "assistant") {
-        html = QString("[%1] 🤖 AI:\n%2\n\n").arg(timestamp, message);
+        messageClass = "ai-message";
+        roleClass = "ai-role";
+        roleText = "AI ASSISTANT";
     } else {
-        html = QString("[%1] %2:\n%3\n\n").arg(timestamp, formattedRole, message);
+        messageClass = "system-message";
+        roleClass = "system-role";
+        roleText = role.toUpper();
     }
     
-    m_OutputConsole->appendPlainText(html);
+    QString formattedContent = markdownToHtml(message);
+    
+    QString html = QString(
+        "<div class='message %1'>"
+        "<span class='timestamp'>%2</span>"
+        "<div class='role %3'>%4</div>"
+        "<div class='content'>%5</div>"
+        "</div>"
+    ).arg(messageClass, timestamp, roleClass, roleText, formattedContent);
+    
+    m_HtmlContent += html;
+    m_OutputConsole->setHtml(m_HtmlContent + "</body></html>");
     m_OutputConsole->verticalScrollBar()->setValue(m_OutputConsole->verticalScrollBar()->maximum());
 }
 
 void AIConsoleWidget::appendSystemMessage(const QString &message)
 {
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-    m_OutputConsole->appendPlainText(QString("[%1] ⚙️ SYSTEM: %2\n").arg(timestamp, message));
+    
+    QString html = QString(
+        "<div class='message system-message'>"
+        "<span class='timestamp'>%1</span>"
+        "<div class='content'>%2</div>"
+        "</div>"
+    ).arg(timestamp, escapeHtml(message));
+    
+    m_HtmlContent += html;
+    m_OutputConsole->setHtml(m_HtmlContent + "</body></html>");
     m_OutputConsole->verticalScrollBar()->setValue(m_OutputConsole->verticalScrollBar()->maximum());
 }
 
 void AIConsoleWidget::clear()
 {
-    m_OutputConsole->clear();
+    m_HtmlContent = QString("<html><head><style>%1</style></head><body>").arg(AI_CONSOLE_CSS);
+    m_OutputConsole->setHtml(m_HtmlContent + "</body></html>");
     m_ConversationHistory.clear();
+}
+
+QString AIConsoleWidget::escapeHtml(const QString &text)
+{
+    QString result = text;
+    result.replace("&", "&amp;");
+    result.replace("<", "&lt;");
+    result.replace(">", "&gt;");
+    result.replace("\n", "<br>");
+    return result;
+}
+
+QString AIConsoleWidget::markdownToHtml(const QString &markdown)
+{
+    QString result = escapeHtml(markdown);
+    
+    // Code blocks: ```code```
+    QRegularExpression codeBlockRe("```([a-z]*)\\n([\\s\\S]*?)```", QRegularExpression::MultilineOption);
+    result.replace(codeBlockRe, "<pre><code>\\2</code></pre>");
+    
+    // Inline code: `code`
+    result.replace(QRegularExpression("`([^`]+)`"), "<code>\\1</code>");
+    
+    // Headers
+    result.replace(QRegularExpression("^##### (.+)$", QRegularExpression::MultilineOption), "<h5>\\1</h5>");
+    result.replace(QRegularExpression("^#### (.+)$", QRegularExpression::MultilineOption), "<h4>\\1</h4>");
+    result.replace(QRegularExpression("^### (.+)$", QRegularExpression::MultilineOption), "<h3>\\1</h3>");
+    result.replace(QRegularExpression("^## (.+)$", QRegularExpression::MultilineOption), "<h2>\\1</h2>");
+    result.replace(QRegularExpression("^# (.+)$", QRegularExpression::MultilineOption), "<h1>\\1</h1>");
+    
+    // Bold: **text**
+    result.replace(QRegularExpression("\\*\\*(.+?)\\*\\*"), "<strong>\\1</strong>");
+    
+    // Italic: *text*
+    result.replace(QRegularExpression("\\*(.+?)\\*"), "<em>\\1</em>");
+    
+    // Horizontal rule
+    result.replace(QRegularExpression("^---$", QRegularExpression::MultilineOption), "<hr>");
+    
+    // Lists - simple handling
+    result.replace(QRegularExpression("^- (.+)$", QRegularExpression::MultilineOption), "• \\1");
+    result.replace(QRegularExpression("^\\d+\\. (.+)$", QRegularExpression::MultilineOption), "\\1");
+    
+    return result;
 }
 
 void AIConsoleWidget::handleSendMessage()

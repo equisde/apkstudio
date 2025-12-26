@@ -4,8 +4,8 @@
 #include <QLineEdit>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
-#include <QPlainTextEdit>
 #include <QPushButton>
+#include <QTextBrowser>
 #include <QWidget>
 
 class AIConsoleWidget : public QWidget
@@ -29,7 +29,7 @@ private slots:
     void handleApiError(QNetworkReply::NetworkError error);
     
 private:
-    QPlainTextEdit *m_OutputConsole;
+    QTextBrowser *m_OutputConsole;
     QLineEdit *m_InputLine;
     QPushButton *m_SendButton;
     QPushButton *m_AnalyzeButton;
@@ -39,6 +39,7 @@ private:
     QString m_ProjectPath;
     QStringList m_ConversationHistory;
     QString m_CurrentProjectContext;
+    QString m_HtmlContent;
     
     bool hasExistingAnalysis();
     void sendToAI(const QString &message);
@@ -47,6 +48,8 @@ private:
     QByteArray buildRequestBody(const QString &message);
     void parseResponse(const QByteArray &data);
     void saveAnalysisToFile(const QString &analysis);
+    QString markdownToHtml(const QString &markdown);
+    QString escapeHtml(const QString &text);
 };
 
 #endif // AICONSOLEWIDGET_H

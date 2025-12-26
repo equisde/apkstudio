@@ -92,6 +92,7 @@ private slots:
     void handleActionAbout();
     void handleActionAntiSplit();
     void handleActionApk();
+    void handleSplitApkOpen(const QString &bundlePath);
     void handleActionBuild();
     void handleActionClose();
     void handleActionCloseAll();
