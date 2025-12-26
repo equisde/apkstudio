@@ -18,6 +18,7 @@
 AISettingsWidget::AISettingsWidget(QWidget *parent)
     : QWidget(parent), m_IsInstalling(false)
 {
+    QSettings settings;
     auto layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(12);
@@ -198,7 +199,6 @@ AISettingsWidget::AISettingsWidget(QWidget *parent)
     layout->addStretch();
     
     // Load settings
-    QSettings settings;
     m_CheckEnabled->setChecked(settings.value("ai_enabled", false).toBool());
     QString provider = settings.value("ai_provider", "gemini").toString();
     int providerIndex = m_ComboProvider->findData(provider);
