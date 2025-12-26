@@ -1,3 +1,4 @@
+#include <QFile>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -34,6 +35,15 @@ QWidget *AntiSplitDialog::buildButtonBox()
         if (m_EditOutput->text().isEmpty()) {
             QMessageBox::warning(this, tr("Error"), tr("Please specify an output file."));
             return;
+        }
+        // Verify all input files exist
+        for (int i = 0; i < m_ListFiles->count(); ++i) {
+            QString filePath = m_ListFiles->item(i)->data(Qt::UserRole).toString();
+            if (!QFile::exists(filePath)) {
+                QMessageBox::warning(this, tr("Error"), 
+                    tr("Input file not found:\n%1").arg(filePath));
+                return;
+            }
         }
         accept();
     });

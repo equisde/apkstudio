@@ -10,7 +10,6 @@
 #include "antisplitworker.h"
 #include "processutils.h"
 
-// Use Qt's built-in zip support via QProcess with jar/zip commands or manual implementation
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
@@ -25,6 +24,19 @@ void AntiSplitWorker::merge()
     emit started();
     emit mergeProgress(0, tr("Starting AntiSplit merge..."));
     
+    // Validate inputs
+    if (m_InputFiles.isEmpty()) {
+        emit mergeFailed(tr("No input files specified"));
+        emit finished();
+        return;
+    }
+    
+    if (m_OutputFile.isEmpty()) {
+        emit mergeFailed(tr("No output file specified"));
+        emit finished();
+        return;
+    }
+    
     // Create temporary working directory
     QString tempPath = QDir::tempPath() + "/apkstudio_antisplit_" + QUuid::createUuid().toString(QUuid::WithoutBraces);
     QDir tempDir;
@@ -36,10 +48,19 @@ void AntiSplitWorker::merge()
     
     QStringList allApkFiles;
     int progress = 5;
+    int progressPerFile = m_InputFiles.count() > 0 ? 20 / m_InputFiles.count() : 20;
     
     // Process each input file
     for (const QString &inputFile : m_InputFiles) {
         QFileInfo info(inputFile);
+        
+        if (!info.exists()) {
+            emit mergeFailed(tr("Input file not found: %1").arg(inputFile));
+            QDir(tempPath).removeRecursively();
+            emit finished();
+            return;
+        }
+        
         QString ext = info.suffix().toLower();
         
         if (ext == "xapk" || ext == "apks" || ext == "apkm") {
@@ -47,7 +68,7 @@ void AntiSplitWorker::merge()
             emit mergeProgress(progress, tr("Extracting %1...").arg(info.fileName()));
             QString extractDir = tempPath + "/" + info.baseName();
             if (!extractXapk(inputFile, extractDir)) {
-                emit mergeFailed(tr("Failed to extract %1").arg(info.fileName()));
+                emit mergeFailed(tr("Failed to extract %1. Make sure Java is installed or the file is a valid XAPK/APKS/APKM archive.").arg(info.fileName()));
                 QDir(tempPath).removeRecursively();
                 emit finished();
                 return;
@@ -61,8 +82,13 @@ void AntiSplitWorker::merge()
         } else if (ext == "apk") {
             // Add APK file directly
             allApkFiles << inputFile;
+        } else {
+            emit mergeFailed(tr("Unsupported file format: %1").arg(ext));
+            QDir(tempPath).removeRecursively();
+            emit finished();
+            return;
         }
-        progress += 10;
+        progress += progressPerFile;
     }
     
     if (allApkFiles.isEmpty()) {
@@ -74,9 +100,13 @@ void AntiSplitWorker::merge()
     
     emit mergeProgress(30, tr("Found %1 APK file(s) to merge...").arg(allApkFiles.count()));
     
+#ifdef QT_DEBUG
+    qDebug() << "APK files to merge:" << allApkFiles;
+#endif
+    
     // Merge all APKs into one
     if (!mergeApks(allApkFiles, tempPath, m_OutputFile)) {
-        emit mergeFailed(tr("Failed to merge APK files"));
+        emit mergeFailed(tr("Failed to merge APK files. Check console for details."));
         QDir(tempPath).removeRecursively();
         emit finished();
         return;
@@ -88,16 +118,24 @@ void AntiSplitWorker::merge()
     if (m_SignApk) {
         emit mergeProgress(85, tr("Signing output APK..."));
         if (!signOutputApk(m_OutputFile)) {
-            emit mergeFailed(tr("Failed to sign output APK"));
-            QDir(tempPath).removeRecursively();
-            emit finished();
-            return;
+            // Don't fail, just warn - unsigned APK is still usable
+#ifdef QT_DEBUG
+            qDebug() << "Signing failed, but merged APK was created";
+#endif
+            emit mergeProgress(90, tr("Warning: Signing failed, APK created unsigned"));
         }
     }
     
     // Cleanup
     emit mergeProgress(95, tr("Cleaning up..."));
     QDir(tempPath).removeRecursively();
+    
+    // Verify output file was created
+    if (!QFile::exists(m_OutputFile)) {
+        emit mergeFailed(tr("Output file was not created"));
+        emit finished();
+        return;
+    }
     
     emit mergeProgress(100, tr("Merge completed successfully!"));
     emit mergeFinished(m_OutputFile);
@@ -144,9 +182,13 @@ bool AntiSplitWorker::extractXapk(const QString &xapkPath, const QString &extrac
     QProcess process;
     QStringList args;
     args << "-NoProfile" << "-Command";
+    QString xapkPathEscaped = xapkPath;
+    QString extractDirEscaped = extractDir;
+    xapkPathEscaped.replace("'", "''");
+    extractDirEscaped.replace("'", "''");
     args << QString("Expand-Archive -Path '%1' -DestinationPath '%2' -Force")
-            .arg(xapkPath.replace("'", "''"))
-            .arg(extractDir.replace("'", "''"));
+            .arg(xapkPathEscaped)
+            .arg(extractDirEscaped);
     process.start("powershell.exe", args);
     if (process.waitForFinished(300000) && process.exitCode() == 0) {
         return true;
@@ -172,24 +214,52 @@ bool AntiSplitWorker::mergeApks(const QStringList &apkFiles, const QString &work
     }
     
     // Find the base APK (usually named base.apk or the main app APK)
+    // Priority: exact "base.apk" > contains "base" > largest file
     QString baseApk;
     QStringList splitApks;
+    qint64 largestSize = 0;
+    QString largestApk;
     
     for (const QString &apk : apkFiles) {
         QFileInfo info(apk);
         QString name = info.fileName().toLower();
-        if (name == "base.apk" || name.contains("base")) {
+        
+        // Track largest APK as fallback
+        if (info.size() > largestSize) {
+            largestSize = info.size();
+            largestApk = apk;
+        }
+        
+        if (name == "base.apk") {
+            baseApk = apk;
+        } else if (baseApk.isEmpty() && name.contains("base")) {
             baseApk = apk;
         } else {
             splitApks << apk;
         }
     }
     
-    // If no base.apk found, use the first APK as base
+    // If no base.apk found, use the largest APK as base (usually the main APK)
+    if (baseApk.isEmpty() && !largestApk.isEmpty()) {
+        baseApk = largestApk;
+        splitApks.clear();
+        for (const QString &apk : apkFiles) {
+            if (apk != baseApk) {
+                splitApks << apk;
+            }
+        }
+    }
+    
+    // If still no base, use first APK
     if (baseApk.isEmpty() && !apkFiles.isEmpty()) {
         baseApk = apkFiles.first();
         splitApks = apkFiles.mid(1);
     }
+
+#ifdef QT_DEBUG
+    qDebug() << "Base APK:" << baseApk;
+    qDebug() << "Split APKs:" << splitApks;
+#endif
     
     // Create merge directory
     QString mergeDir = workDir + "/merge";
@@ -226,9 +296,13 @@ bool AntiSplitWorker::mergeApks(const QStringList &apkFiles, const QString &work
             QProcess ps;
             QStringList psArgs;
             psArgs << "-NoProfile" << "-Command";
+            QString baseApkEsc = baseApk;
+            QString baseExtractDirEsc = baseExtractDir;
+            baseApkEsc.replace("'", "''");
+            baseExtractDirEsc.replace("'", "''");
             psArgs << QString("Expand-Archive -Path '%1' -DestinationPath '%2' -Force")
-                    .arg(baseApk.replace("'", "''"))
-                    .arg(baseExtractDir.replace("'", "''"));
+                    .arg(baseApkEsc)
+                    .arg(baseExtractDirEsc);
             ps.start("powershell.exe", psArgs);
             if (!ps.waitForFinished(300000) || ps.exitCode() != 0) {
                 return false;
@@ -239,9 +313,13 @@ bool AntiSplitWorker::mergeApks(const QStringList &apkFiles, const QString &work
         QProcess ps;
         QStringList psArgs;
         psArgs << "-NoProfile" << "-Command";
+        QString baseApkEsc = baseApk;
+        QString baseExtractDirEsc = baseExtractDir;
+        baseApkEsc.replace("'", "''");
+        baseExtractDirEsc.replace("'", "''");
         psArgs << QString("Expand-Archive -Path '%1' -DestinationPath '%2' -Force")
-                .arg(baseApk.replace("'", "''"))
-                .arg(baseExtractDir.replace("'", "''"));
+                .arg(baseApkEsc)
+                .arg(baseExtractDirEsc);
         ps.start("powershell.exe", psArgs);
         if (!ps.waitForFinished(300000) || ps.exitCode() != 0) {
             return false;
@@ -379,11 +457,15 @@ bool AntiSplitWorker::mergeApks(const QStringList &apkFiles, const QString &work
             QProcess ps;
             QStringList psArgs;
             psArgs << "-NoProfile" << "-Command";
-            QString outputApkEscaped = outputApk;
-            QString baseExtractDirEscaped = baseExtractDir;
+            QString outputApkEsc = outputApk;
+            QString baseExtractDirEsc = baseExtractDir;
+            outputApkEsc.replace("'", "''");
+            baseExtractDirEsc.replace("'", "''");
+            QString zipPathEsc = outputApkEsc;
+            zipPathEsc.replace(".apk", ".zip");
             psArgs << QString("Compress-Archive -Path '%1\\*' -DestinationPath '%2' -Force")
-                    .arg(baseExtractDirEscaped.replace("'", "''"))
-                    .arg(outputApkEscaped.replace("'", "''").replace(".apk", ".zip"));
+                    .arg(baseExtractDirEsc)
+                    .arg(zipPathEsc);
             ps.start("powershell.exe", psArgs);
             if (ps.waitForFinished(300000) && ps.exitCode() == 0) {
                 // Rename .zip to .apk
@@ -399,13 +481,17 @@ bool AntiSplitWorker::mergeApks(const QStringList &apkFiles, const QString &work
         QProcess ps;
         QStringList psArgs;
         psArgs << "-NoProfile" << "-Command";
-        QString outputApkEscaped = outputApk;
-        QString baseExtractDirEscaped = baseExtractDir;
+        QString outputApkEsc = outputApk;
+        QString baseExtractDirEsc = baseExtractDir;
+        outputApkEsc.replace("'", "''");
+        baseExtractDirEsc.replace("'", "''");
         QString zipPath = outputApk;
         zipPath.replace(".apk", ".zip");
+        QString zipPathEsc = zipPath;
+        zipPathEsc.replace("'", "''");
         psArgs << QString("Compress-Archive -Path '%1\\*' -DestinationPath '%2' -Force")
-                .arg(baseExtractDirEscaped.replace("'", "''"))
-                .arg(zipPath.replace("'", "''"));
+                .arg(baseExtractDirEsc)
+                .arg(zipPathEsc);
         ps.start("powershell.exe", psArgs);
         if (ps.waitForFinished(300000) && ps.exitCode() == 0) {
             // Rename .zip to .apk
