@@ -3,6 +3,8 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
+#include <QFileInfo>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -95,7 +97,9 @@ hr { border: none; border-top: 1px solid #3c3c3c; margin: 16px 0; }
 )";
 
 AIConsoleWidget::AIConsoleWidget(QWidget *parent)
-    : QWidget(parent), m_CurrentReply(nullptr)
+    : QWidget(parent), m_CurrentReply(nullptr), m_CliProcess(nullptr), 
+      m_UseCliAgent(false), m_IsProcessingFileOps(false),
+      m_NodeAvailable(false), m_GeminiCliAvailable(false), m_CopilotCliAvailable(false)
 {
     m_NetworkManager = new QNetworkAccessManager(this);
     
@@ -113,6 +117,42 @@ AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     titleLabel->setStyleSheet("font-weight: 600; font-size: 11px; color: #cccccc; letter-spacing: 1px;");
     headerLayout->addWidget(titleLabel);
     headerLayout->addStretch();
+    
+    // Mode selector (API vs CLI Agent)
+    m_ModeCombo = new QComboBox(this);
+    m_ModeCombo->addItem(tr("API Mode"), "api");
+    m_ModeCombo->addItem(tr("CLI Agent"), "cli");
+    m_ModeCombo->setStyleSheet(R"(
+        QComboBox {
+            background: #3c3c3c;
+            color: #cccccc;
+            border: 1px solid #3c3c3c;
+            border-radius: 3px;
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+        QComboBox:hover { border-color: #0e639c; }
+        QComboBox::drop-down { border: none; }
+    )");
+    connect(m_ModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &AIConsoleWidget::onModeChanged);
+    headerLayout->addWidget(m_ModeCombo);
+    
+    // Dependencies button
+    m_DepsButton = new QPushButton(tr("🔧"), this);
+    m_DepsButton->setToolTip(tr("Check/Install Dependencies"));
+    m_DepsButton->setFixedSize(28, 28);
+    m_DepsButton->setStyleSheet(R"(
+        QPushButton {
+            background: transparent;
+            color: #cccccc;
+            border: 1px solid #3c3c3c;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        QPushButton:hover { background: #3c3c3c; }
+    )");
+    connect(m_DepsButton, &QPushButton::clicked, this, &AIConsoleWidget::checkDependencies);
+    headerLayout->addWidget(m_DepsButton);
     
     m_AnalyzeButton = new QPushButton(tr("⚡ Analyze"), this);
     m_AnalyzeButton->setStyleSheet(R"(
@@ -225,6 +265,13 @@ void AIConsoleWidget::setProjectPath(const QString &path)
 {
     m_ProjectPath = path;
     m_CurrentProjectContext.clear();
+    m_FullProjectContext.clear();
+    
+    if (!path.isEmpty()) {
+        // Build full project context for ongoing conversations
+        m_FullProjectContext = buildFullProjectContext();
+        appendSystemMessage(tr("📁 Project loaded: %1").arg(QDir(path).dirName()));
+    }
     
     QSettings settings;
     bool autoAnalyze = settings.value("ai_auto_analyze", true).toBool();
@@ -239,6 +286,9 @@ void AIConsoleWidget::setProjectPath(const QString &path)
             appendSystemMessage(tr("📄 Previous analysis found. Use 'Analyze Project' button to re-analyze."));
         }
     }
+    
+    // Detect environment for CLI agents
+    detectEnvironment();
 }
 
 bool AIConsoleWidget::hasExistingAnalysis()
@@ -540,21 +590,36 @@ QByteArray AIConsoleWidget::buildRequestBody(const QString &message)
     QString model = settings.value("ai_model", "gemini-2.0-flash-exp").toString();
     
     QJsonObject root;
+    QString systemPrompt = getSystemPrompt();
     
     // Add project context to message if available
     QString fullMessage = message;
     if (!m_CurrentProjectContext.isEmpty()) {
         fullMessage = m_CurrentProjectContext + "\n\n=== USER REQUEST ===\n" + message;
+    } else if (!m_FullProjectContext.isEmpty()) {
+        // Use cached full context for follow-up queries
+        fullMessage = "Project context is loaded. User request:\n" + message;
     }
     
     if (provider == "gemini") {
         QJsonArray contents;
+        
+        // System instruction for Gemini
+        QJsonObject systemInstruction;
+        QJsonArray systemParts;
+        QJsonObject systemPart;
+        systemPart["text"] = systemPrompt;
+        systemParts.append(systemPart);
+        systemInstruction["parts"] = systemParts;
+        root["systemInstruction"] = systemInstruction;
+        
         QJsonObject content;
         QJsonArray parts;
         QJsonObject part;
         part["text"] = fullMessage;
         parts.append(part);
         content["parts"] = parts;
+        content["role"] = "user";
         contents.append(content);
         root["contents"] = contents;
         
@@ -569,9 +634,7 @@ QByteArray AIConsoleWidget::buildRequestBody(const QString &message)
         QJsonArray messages;
         QJsonObject systemMsg;
         systemMsg["role"] = "system";
-        systemMsg["content"] = "You are an expert Android security researcher and reverse engineer. "
-                               "Analyze APK projects, identify vulnerabilities, explain code, and suggest modifications. "
-                               "Be thorough but concise. Format output in markdown.";
+        systemMsg["content"] = systemPrompt;
         messages.append(systemMsg);
         
         QJsonObject userMsg;
@@ -584,8 +647,7 @@ QByteArray AIConsoleWidget::buildRequestBody(const QString &message)
     } else if (provider == "anthropic") {
         root["model"] = model;
         root["max_tokens"] = 4096;
-        root["system"] = "You are an expert Android security researcher and reverse engineer. "
-                         "Analyze APK projects, identify vulnerabilities, explain code, and suggest modifications.";
+        root["system"] = systemPrompt;
         QJsonArray messages;
         QJsonObject userMsg;
         userMsg["role"] = "user";
@@ -662,6 +724,11 @@ void AIConsoleWidget::parseResponse(const QByteArray &data)
     
     appendMessage("assistant", responseText);
     
+    // Process file operations if present in response
+    if (responseText.contains("<<<FILE_")) {
+        processFileOperations(responseText);
+    }
+    
     // Save analysis to file if this was a project analysis
     if (!m_CurrentProjectContext.isEmpty()) {
         saveAnalysisToFile(responseText);
@@ -702,4 +769,522 @@ void AIConsoleWidget::handleApiError(QNetworkReply::NetworkError error)
     if (m_CurrentReply) {
         appendSystemMessage(tr("Network error: %1").arg(m_CurrentReply->errorString()));
     }
+}
+
+// ============================================================================
+// File Operations - Allow AI to modify project files
+// ============================================================================
+
+void AIConsoleWidget::processFileOperations(const QString &response)
+{
+    // Parse AI response for file operation commands
+    // Format: <<<FILE_CREATE:path>>>content<<<END_FILE>>>
+    // Format: <<<FILE_MODIFY:path>>>old_content<<<REPLACE_WITH>>>new_content<<<END_FILE>>>
+    // Format: <<<FILE_DELETE:path>>>
+    // Format: <<<FILE_APPEND:path>>>content<<<END_FILE>>>
+    
+    QRegularExpression createRe("<<<FILE_CREATE:([^>]+)>>>([\\s\\S]*?)<<<END_FILE>>>");
+    QRegularExpression modifyRe("<<<FILE_MODIFY:([^>]+)>>>([\\s\\S]*?)<<<REPLACE_WITH>>>([\\s\\S]*?)<<<END_FILE>>>");
+    QRegularExpression deleteRe("<<<FILE_DELETE:([^>]+)>>>");
+    QRegularExpression appendRe("<<<FILE_APPEND:([^>]+)>>>([\\s\\S]*?)<<<END_FILE>>>");
+    
+    int operationsCount = 0;
+    
+    // Process CREATE operations
+    QRegularExpressionMatchIterator createIt = createRe.globalMatch(response);
+    while (createIt.hasNext()) {
+        QRegularExpressionMatch match = createIt.next();
+        QString path = match.captured(1).trimmed();
+        QString content = match.captured(2);
+        if (createFile(path, content)) {
+            operationsCount++;
+            appendSystemMessage(tr("✅ Created: %1").arg(path));
+        }
+    }
+    
+    // Process MODIFY operations
+    QRegularExpressionMatchIterator modifyIt = modifyRe.globalMatch(response);
+    while (modifyIt.hasNext()) {
+        QRegularExpressionMatch match = modifyIt.next();
+        QString path = match.captured(1).trimmed();
+        QString oldContent = match.captured(2);
+        QString newContent = match.captured(3);
+        if (modifyFile(path, oldContent, newContent)) {
+            operationsCount++;
+            appendSystemMessage(tr("✅ Modified: %1").arg(path));
+        }
+    }
+    
+    // Process DELETE operations
+    QRegularExpressionMatchIterator deleteIt = deleteRe.globalMatch(response);
+    while (deleteIt.hasNext()) {
+        QRegularExpressionMatch match = deleteIt.next();
+        QString path = match.captured(1).trimmed();
+        if (deleteFile(path)) {
+            operationsCount++;
+            appendSystemMessage(tr("✅ Deleted: %1").arg(path));
+        }
+    }
+    
+    // Process APPEND operations
+    QRegularExpressionMatchIterator appendIt = appendRe.globalMatch(response);
+    while (appendIt.hasNext()) {
+        QRegularExpressionMatch match = appendIt.next();
+        QString path = match.captured(1).trimmed();
+        QString content = match.captured(2);
+        if (appendToFile(path, content)) {
+            operationsCount++;
+            appendSystemMessage(tr("✅ Appended to: %1").arg(path));
+        }
+    }
+    
+    if (operationsCount > 0) {
+        appendSystemMessage(tr("📝 Completed %1 file operation(s)").arg(operationsCount));
+    }
+}
+
+bool AIConsoleWidget::createFile(const QString &relativePath, const QString &content)
+{
+    if (m_ProjectPath.isEmpty()) return false;
+    
+    QString fullPath = m_ProjectPath + "/" + relativePath;
+    QFileInfo info(fullPath);
+    
+    // Create parent directories if needed
+    QDir().mkpath(info.absolutePath());
+    
+    QFile file(fullPath);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << content;
+        file.close();
+        emit fileCreated(fullPath);
+        return true;
+    }
+    
+    appendSystemMessage(tr("❌ Failed to create: %1").arg(relativePath));
+    return false;
+}
+
+bool AIConsoleWidget::modifyFile(const QString &relativePath, const QString &oldContent, const QString &newContent)
+{
+    if (m_ProjectPath.isEmpty()) return false;
+    
+    QString fullPath = m_ProjectPath + "/" + relativePath;
+    QFile file(fullPath);
+    
+    if (!file.exists()) {
+        appendSystemMessage(tr("❌ File not found: %1").arg(relativePath));
+        return false;
+    }
+    
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        appendSystemMessage(tr("❌ Cannot read: %1").arg(relativePath));
+        return false;
+    }
+    
+    QString content = file.readAll();
+    file.close();
+    
+    // Perform replacement
+    if (!content.contains(oldContent)) {
+        appendSystemMessage(tr("⚠️ Content not found in: %1").arg(relativePath));
+        return false;
+    }
+    
+    content.replace(oldContent, newContent);
+    
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        appendSystemMessage(tr("❌ Cannot write: %1").arg(relativePath));
+        return false;
+    }
+    
+    QTextStream out(&file);
+    out << content;
+    file.close();
+    
+    emit fileModified(fullPath);
+    return true;
+}
+
+bool AIConsoleWidget::deleteFile(const QString &relativePath)
+{
+    if (m_ProjectPath.isEmpty()) return false;
+    
+    QString fullPath = m_ProjectPath + "/" + relativePath;
+    QFile file(fullPath);
+    
+    if (!file.exists()) {
+        appendSystemMessage(tr("⚠️ File already doesn't exist: %1").arg(relativePath));
+        return true;
+    }
+    
+    if (file.remove()) {
+        return true;
+    }
+    
+    appendSystemMessage(tr("❌ Failed to delete: %1").arg(relativePath));
+    return false;
+}
+
+bool AIConsoleWidget::appendToFile(const QString &relativePath, const QString &content)
+{
+    if (m_ProjectPath.isEmpty()) return false;
+    
+    QString fullPath = m_ProjectPath + "/" + relativePath;
+    QFile file(fullPath);
+    
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
+        appendSystemMessage(tr("❌ Cannot append to: %1").arg(relativePath));
+        return false;
+    }
+    
+    QTextStream out(&file);
+    out << content;
+    file.close();
+    
+    emit fileModified(fullPath);
+    return true;
+}
+
+QString AIConsoleWidget::readFileContent(const QString &relativePath)
+{
+    if (m_ProjectPath.isEmpty()) return QString();
+    
+    QString fullPath = m_ProjectPath + "/" + relativePath;
+    QFile file(fullPath);
+    
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+    
+    QString content = file.readAll();
+    file.close();
+    return content;
+}
+
+// ============================================================================
+// Full Project Context - Deep analysis of project structure
+// ============================================================================
+
+QString AIConsoleWidget::buildFullProjectContext()
+{
+    QString context;
+    QTextStream stream(&context);
+    
+    stream << "=== FULL ANDROID PROJECT CONTEXT ===\n\n";
+    stream << "Project Path: " << m_ProjectPath << "\n\n";
+    
+    // Read all key files
+    QStringList keyFiles = {
+        "AndroidManifest.xml",
+        "apktool.yml",
+        "res/values/strings.xml",
+        "res/values/styles.xml",
+        "res/values/colors.xml"
+    };
+    
+    for (const QString &file : keyFiles) {
+        QString content = readFileContent(file);
+        if (!content.isEmpty()) {
+            stream << "=== " << file << " ===\n";
+            if (content.length() > 10000) {
+                stream << content.left(10000) << "\n... (truncated)\n\n";
+            } else {
+                stream << content << "\n\n";
+            }
+        }
+    }
+    
+    // List all smali files with main classes content
+    stream << "=== SMALI CODE OVERVIEW ===\n";
+    QDir smaliDir(m_ProjectPath + "/smali");
+    if (smaliDir.exists()) {
+        QDirIterator it(smaliDir.absolutePath(), QStringList() << "*.smali", 
+                        QDir::Files, QDirIterator::Subdirectories);
+        int count = 0;
+        while (it.hasNext() && count < 100) {
+            QString filePath = it.next();
+            QString relativePath = filePath.mid(m_ProjectPath.length() + 1);
+            
+            // Include content of important classes
+            if (relativePath.contains("MainActivity") || 
+                relativePath.contains("Application") ||
+                relativePath.contains("Activity") ||
+                relativePath.contains("Service")) {
+                
+                QFile f(filePath);
+                if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                    QString content = f.readAll();
+                    f.close();
+                    
+                    stream << "\n--- " << relativePath << " ---\n";
+                    if (content.length() > 5000) {
+                        stream << content.left(5000) << "\n... (truncated)\n";
+                    } else {
+                        stream << content << "\n";
+                    }
+                }
+            } else {
+                stream << "  - " << relativePath << "\n";
+            }
+            count++;
+        }
+    }
+    
+    return context;
+}
+
+// ============================================================================
+// CLI Agent Integration
+// ============================================================================
+
+void AIConsoleWidget::detectEnvironment()
+{
+    m_NodeAvailable = false;
+    m_GeminiCliAvailable = false;
+    m_CopilotCliAvailable = false;
+    
+    // Check for Node.js
+    QProcess nodeCheck;
+    nodeCheck.start("node", QStringList() << "--version");
+    if (nodeCheck.waitForFinished(3000)) {
+        QString output = nodeCheck.readAllStandardOutput().trimmed();
+        if (output.startsWith("v")) {
+            m_NodeAvailable = true;
+            m_NodeVersion = output;
+            m_NodePath = "node";
+        }
+    }
+    
+    // Check for Gemini CLI
+    QProcess geminiCheck;
+    geminiCheck.start("gemini", QStringList() << "--version");
+    if (geminiCheck.waitForFinished(3000)) {
+        m_GeminiCliAvailable = true;
+    }
+    
+    // Check for GitHub Copilot CLI
+    QProcess copilotCheck;
+    copilotCheck.start("github-copilot-cli", QStringList() << "--version");
+    if (copilotCheck.waitForFinished(3000)) {
+        m_CopilotCliAvailable = true;
+    }
+    
+    // Also check npx availability
+    if (!m_GeminiCliAvailable && m_NodeAvailable) {
+        QProcess npxCheck;
+        npxCheck.start("npx", QStringList() << "@anthropic-ai/claude-cli" << "--version");
+        // Just check if npx works
+    }
+}
+
+void AIConsoleWidget::checkDependencies()
+{
+    detectEnvironment();
+    
+    QString status = tr("🔍 Environment Check:\n");
+    status += QString("  • Node.js: %1\n").arg(m_NodeAvailable ? m_NodeVersion : tr("Not found"));
+    status += QString("  • Gemini CLI: %1\n").arg(m_GeminiCliAvailable ? tr("Available") : tr("Not installed"));
+    status += QString("  • Copilot CLI: %1\n").arg(m_CopilotCliAvailable ? tr("Available") : tr("Not installed"));
+    
+    if (!m_NodeAvailable) {
+        status += tr("\n⚠️ Node.js is required for CLI agents. Install from nodejs.org");
+    }
+    
+    appendSystemMessage(status);
+}
+
+void AIConsoleWidget::installDependencies()
+{
+    if (!m_NodeAvailable) {
+        appendSystemMessage(tr("❌ Node.js is required. Please install from https://nodejs.org/"));
+        return;
+    }
+    
+    QSettings settings;
+    QString provider = settings.value("ai_provider", "gemini").toString();
+    
+    QString package;
+    if (provider == "gemini") {
+        package = "@anthropic-ai/gemini-cli";
+    } else if (provider == "copilot") {
+        package = "@anthropic-ai/github-copilot-cli";
+    }
+    
+    if (package.isEmpty()) {
+        appendSystemMessage(tr("⚠️ No CLI agent available for current provider"));
+        return;
+    }
+    
+    appendSystemMessage(tr("📦 Installing %1...").arg(package));
+    
+    QProcess *installer = new QProcess(this);
+    connect(installer, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, installer, package](int exitCode, QProcess::ExitStatus) {
+        if (exitCode == 0) {
+            appendSystemMessage(tr("✅ Successfully installed %1").arg(package));
+            detectEnvironment();
+        } else {
+            appendSystemMessage(tr("❌ Failed to install %1").arg(package));
+        }
+        installer->deleteLater();
+    });
+    
+    installer->start("npm", QStringList() << "install" << "-g" << package);
+}
+
+void AIConsoleWidget::startCliAgent()
+{
+    if (m_CliProcess) {
+        stopCliAgent();
+    }
+    
+    QString command = getCliAgentCommand();
+    if (command.isEmpty()) {
+        appendSystemMessage(tr("❌ No CLI agent available for current configuration"));
+        return;
+    }
+    
+    m_CliProcess = new QProcess(this);
+    m_CliProcess->setWorkingDirectory(m_ProjectPath);
+    
+    connect(m_CliProcess, &QProcess::readyReadStandardOutput, this, &AIConsoleWidget::handleCliOutput);
+    connect(m_CliProcess, &QProcess::readyReadStandardError, this, &AIConsoleWidget::handleCliError);
+    connect(m_CliProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &AIConsoleWidget::handleCliFinished);
+    
+    QStringList args;
+    args << "--interactive";
+    
+    m_CliProcess->start(command, args);
+    
+    if (m_CliProcess->waitForStarted(5000)) {
+        appendSystemMessage(tr("🤖 CLI Agent started: %1").arg(command));
+        m_UseCliAgent = true;
+    } else {
+        appendSystemMessage(tr("❌ Failed to start CLI agent"));
+        delete m_CliProcess;
+        m_CliProcess = nullptr;
+    }
+}
+
+void AIConsoleWidget::stopCliAgent()
+{
+    if (m_CliProcess) {
+        m_CliProcess->terminate();
+        if (!m_CliProcess->waitForFinished(3000)) {
+            m_CliProcess->kill();
+        }
+        delete m_CliProcess;
+        m_CliProcess = nullptr;
+        m_UseCliAgent = false;
+        appendSystemMessage(tr("🛑 CLI Agent stopped"));
+    }
+}
+
+void AIConsoleWidget::sendToCliAgent(const QString &message)
+{
+    if (!m_CliProcess || m_CliProcess->state() != QProcess::Running) {
+        appendSystemMessage(tr("⚠️ CLI Agent not running"));
+        return;
+    }
+    
+    m_CliProcess->write((message + "\n").toUtf8());
+}
+
+QString AIConsoleWidget::getCliAgentCommand()
+{
+    QSettings settings;
+    QString provider = settings.value("ai_provider", "gemini").toString();
+    
+    detectEnvironment();
+    
+    if (provider == "gemini" && m_GeminiCliAvailable) {
+        return "gemini";
+    } else if (provider == "copilot" && m_CopilotCliAvailable) {
+        return "github-copilot-cli";
+    }
+    
+    return QString();
+}
+
+void AIConsoleWidget::handleCliOutput()
+{
+    if (!m_CliProcess) return;
+    
+    QString output = m_CliProcess->readAllStandardOutput();
+    if (!output.isEmpty()) {
+        appendMessage("assistant", output);
+    }
+}
+
+void AIConsoleWidget::handleCliError()
+{
+    if (!m_CliProcess) return;
+    
+    QString error = m_CliProcess->readAllStandardError();
+    if (!error.isEmpty()) {
+        appendSystemMessage(tr("CLI Error: %1").arg(error));
+    }
+}
+
+void AIConsoleWidget::handleCliFinished(int exitCode, QProcess::ExitStatus status)
+{
+    Q_UNUSED(status)
+    appendSystemMessage(tr("CLI Agent exited with code %1").arg(exitCode));
+    m_UseCliAgent = false;
+    m_CliProcess = nullptr;
+}
+
+void AIConsoleWidget::onModeChanged(int index)
+{
+    Q_UNUSED(index)
+    // Handle mode change between API and CLI agent
+    if (m_ModeCombo) {
+        QString mode = m_ModeCombo->currentData().toString();
+        if (mode == "cli") {
+            startCliAgent();
+        } else {
+            stopCliAgent();
+        }
+    }
+}
+
+// ============================================================================
+// System Prompt for File Operations
+// ============================================================================
+
+QString AIConsoleWidget::getSystemPrompt()
+{
+    return tr(
+        "You are an expert Android reverse engineer and security researcher assistant. "
+        "You have full access to modify files in the current APK project.\n\n"
+        
+        "When the user requests modifications, you can perform file operations using these formats:\n\n"
+        
+        "To CREATE a new file:\n"
+        "<<<FILE_CREATE:relative/path/to/file.ext>>>\n"
+        "file content here\n"
+        "<<<END_FILE>>>\n\n"
+        
+        "To MODIFY an existing file (replace content):\n"
+        "<<<FILE_MODIFY:relative/path/to/file.ext>>>\n"
+        "old content to find\n"
+        "<<<REPLACE_WITH>>>\n"
+        "new content to replace with\n"
+        "<<<END_FILE>>>\n\n"
+        
+        "To DELETE a file:\n"
+        "<<<FILE_DELETE:relative/path/to/file.ext>>>\n\n"
+        
+        "To APPEND to a file:\n"
+        "<<<FILE_APPEND:relative/path/to/file.ext>>>\n"
+        "content to append\n"
+        "<<<END_FILE>>>\n\n"
+        
+        "Always explain what you're doing before performing operations. "
+        "Be careful with smali code modifications - maintain proper syntax. "
+        "When modifying AndroidManifest.xml, ensure XML validity."
+    );
 }
