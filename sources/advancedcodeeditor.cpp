@@ -31,12 +31,17 @@
 #define SIDEBAR_FOLD_WIDTH 16
 
 AdvancedCodeEditor::AdvancedCodeEditor(QWidget *parent)
-    : QPlainTextEdit(parent), m_NetworkManager(nullptr), m_Completer(nullptr),
-      m_LastSearchCaseSensitive(false), m_LastSearchWholeWord(false), m_LastSearchRegex(false)
+    : QPlainTextEdit(parent)
 {
+    m_NetworkManager = new QNetworkAccessManager(this);
+    m_Completer = new QCompleter(this);
+    m_LastSearchCaseSensitive = false;
+    m_LastSearchWholeWord = false;
+    m_LastSearchRegex = false;
+    
     m_Sidebar = new CodeEditorSidebar(this);
     m_Minimap = new CodeEditorMinimap(this);
-    m_NetworkManager = new QNetworkAccessManager(this);
+    
     m_CompletionTimer = new QTimer(this);
     m_CompletionTimer->setSingleShot(true);
     m_CompletionTimer->setInterval(300);
