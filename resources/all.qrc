@@ -45,6 +45,7 @@
         <file>light.theme</file>
     </qresource>
     <qresource prefix="/translations">
+        <file>translations/apkstudio_cl.ts</file>
         <file>translations/apkstudio_es.ts</file>
         <file>translations/apkstudio_pt.ts</file>
         <file>translations/apkstudio_en.ts</file>

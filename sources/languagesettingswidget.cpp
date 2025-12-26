@@ -23,6 +23,7 @@ QString LanguageSettingsWidget::s_CurrentLanguage = "en";
 static const QMap<QString, QString> LANGUAGE_NAMES = {
     {"en", "English (Technical)"},
     {"es", "Español (Coloquial)"},
+    {"cl", "Chileno (Flaite/Vio)"},
     {"pt", "Português (Gíria)"},
     {"hack", "Hackerman (Leet)"},
     {"fr", "Français"},
@@ -41,6 +42,21 @@ static const QMap<QString, QString> EN_TRANSLATIONS = {
     {"ai_assistant", "AI Oracle"},
     {"ssl_unpinner", "SSL Killer"},
     {"project_explorer", "The Snitch"}
+};
+
+// Chilean translations (Flaite)
+static const QMap<QString, QString> CL_TRANSLATIONS = {
+    {"app_name", "APK Studio pal' Corte"},
+    {"open_apk", "Suelta el APK po ctm"},
+    {"settings", "Mis weás"},
+    {"decompile", "Destripando el bicho"},
+    {"recompile", "Armando el cuento"},
+    {"ready", "Tamo' ready weon"},
+    {"ai_assistant", "El Vio de la IA"},
+    {"ssl_unpinner", "Bypass de los Pacos"},
+    {"project_explorer", "El Sapo"},
+    {"sign_apk", "Ponerle el sello"},
+    {"install", "Meter pal' celu"}
 };
 
 // Spanish translations (Colloquial)
@@ -94,6 +110,7 @@ LanguageSettingsWidget::LanguageSettingsWidget(QWidget *parent)
     
     // Initialize translations
     s_Translations["en"] = EN_TRANSLATIONS;
+    s_Translations["cl"] = CL_TRANSLATIONS;
     s_Translations["es"] = ES_TRANSLATIONS;
     s_Translations["pt"] = PT_TRANSLATIONS;
     s_Translations["hack"] = HACK_TRANSLATIONS;
