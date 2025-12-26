@@ -68,7 +68,20 @@
 #define WINDOW_HEIGHT 600
 
 MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
-    : QMainWindow(parent), m_FindReplaceDialog(nullptr)
+    : QMainWindow(parent), 
+      m_ActionBuild1(nullptr), m_ActionBuild2(nullptr), m_ActionClose(nullptr),
+      m_ActionCloseAll(nullptr), m_ActionCopy(nullptr), m_ActionCut(nullptr),
+      m_ActionFind(nullptr), m_ActionGoto(nullptr), m_ActionInstall1(nullptr),
+      m_ActionInstall2(nullptr), m_ActionPaste(nullptr), m_ActionRedo(nullptr),
+      m_ActionReplace(nullptr), m_ActionSave(nullptr), m_ActionSaveAll(nullptr),
+      m_ActionSign(nullptr), m_ActionUndo(nullptr), m_ActionViewProject(nullptr),
+      m_ActionViewFiles(nullptr), m_ActionViewConsole(nullptr), m_ActionViewToolBar(nullptr),
+      m_CentralStack(nullptr), m_DockProject(nullptr), m_DockFiles(nullptr),
+      m_DockConsole(nullptr), m_EditConsole(nullptr), m_FindReplaceDialog(nullptr),
+      m_SearchFiles(nullptr), m_SearchProjects(nullptr), m_ListOpenFiles(nullptr),
+      m_MainToolBar(nullptr), m_ModelOpenFiles(nullptr), m_FilesProxyModel(nullptr),
+      m_ProgressDialog(nullptr), m_ProjectsTree(nullptr), m_StatusCursor(nullptr),
+      m_StatusMessage(nullptr), m_TabEditors(nullptr)
 {
     addDockWidget(Qt::LeftDockWidgetArea, m_DockProject = buildProjectsDock());
     addDockWidget(Qt::LeftDockWidgetArea, m_DockFiles = buildFilesDock());
@@ -96,13 +109,28 @@ MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
         resize(settings.value("app_size", QSize(WINDOW_WIDTH, WINDOW_HEIGHT)).toSize());
     }
     const QVariant state = settings.value("dock_state");
-    if (state.isValid()) {
-        restoreState(state.toByteArray());
+    if (state.isValid() && !state.toByteArray().isEmpty()) {
+        // Wrap in try-catch equivalent - if restoreState fails, it returns false
+        if (!restoreState(state.toByteArray())) {
+            // State restoration failed, likely due to incompatible version
+            // Clear the saved state to prevent future issues
+            settings.remove("dock_state");
+        }
     }
-    m_ActionViewProject->setChecked(m_DockProject->isVisible());
-    m_ActionViewFiles->setChecked(m_DockFiles->isVisible());
-    m_ActionViewConsole->setChecked(m_DockConsole->isVisible());
-    m_ActionViewToolBar->setChecked(m_MainToolBar->isVisible());
+    
+    // Safely check visibility of docks and toolbar
+    if (m_ActionViewProject && m_DockProject) {
+        m_ActionViewProject->setChecked(m_DockProject->isVisible());
+    }
+    if (m_ActionViewFiles && m_DockFiles) {
+        m_ActionViewFiles->setChecked(m_DockFiles->isVisible());
+    }
+    if (m_ActionViewConsole && m_DockConsole) {
+        m_ActionViewConsole->setChecked(m_DockConsole->isVisible());
+    }
+    if (m_ActionViewToolBar && m_MainToolBar) {
+        m_ActionViewToolBar->setChecked(m_MainToolBar->isVisible());
+    }
     
     // Ensure main window gets focus instead of search boxes
     setFocus();
@@ -1565,7 +1593,7 @@ void MainWindow::updateWindowTitle()
     QString title = tr("APK Studio by VPZ");
     
     // Get the first (most recent) project from the tree
-    if (m_ProjectsTree->topLevelItemCount() > 0) {
+    if (m_ProjectsTree && m_ProjectsTree->topLevelItemCount() > 0) {
         QTreeWidgetItem *firstProject = m_ProjectsTree->topLevelItem(0);
         if (firstProject) {
             QString projectFolder = firstProject->data(0, Qt::UserRole + 2).toString();
