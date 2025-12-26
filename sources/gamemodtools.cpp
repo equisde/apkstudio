@@ -134,7 +134,8 @@ void GameModStudio::downloadTools()
     QDir().mkpath(toolsDir);
     QString savePath = toolsDir + "/Il2CppDumper.zip";
 
-    QNetworkRequest req(QUrl(dumperUrl));
+    QNetworkRequest req;
+    req.setUrl(QUrl(dumperUrl));
     QNetworkReply *reply = m_NetworkManager->get(req);
 
     connect(reply, &QNetworkReply::finished, this, [=]() {
@@ -225,7 +226,8 @@ void GameModStudio::askAI(const QString &prompt, std::function<void(const QStrin
     contents.append(content);
     root["contents"] = contents;
 
-    QNetworkRequest req(QUrl(QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2").arg(model, key)));
+    QNetworkRequest req;
+    req.setUrl(QUrl(QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2").arg(model, key)));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
     QNetworkReply *reply = m_NetworkManager->post(req, QJsonDocument(root).toJson());
