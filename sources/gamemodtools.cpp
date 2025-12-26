@@ -1342,140 +1342,162 @@ void NativeLibAnalyzerDialog::hexDump() {}
 void NativeLibAnalyzerDialog::disassemble() {}
 void NativeLibAnalyzerDialog::patchBytes() {}
 void NativeLibAnalyzerDialog::aiAnalyzeLib() {}
-
-// ============== AI-Powered Tool Downloader ==============
-
-class GameModToolDownloader : public QObject
-{
-    Q_OBJECT
-public:
-    struct Tool {
-        QString name;
-        QString description;
-        QString downloadUrl;
-        QString extractPath;
-        bool required;
-    };
-    
-    static QList<Tool> getRequiredTools(GameEngineDetector::Engine engine) {
-        QList<Tool> tools;
-        
-        switch (engine) {
-        case GameEngineDetector::Unity:
-            tools << Tool{"Il2CppDumper", "Dumps IL2CPP metadata", 
-                "https://github.com/Perfare/Il2CppDumper/releases/latest/download/Il2CppDumper-net6-win.zip",
-                "tools/il2cppdumper", true};
-            tools << Tool{"AssetStudio", "Unity asset extractor",
-                "https://github.com/Perfare/AssetStudio/releases/latest/download/AssetStudio.net6.v0.16.0.zip",
-                "tools/assetstudio", false};
-            tools << Tool{"dnSpy", "Mono assembly decompiler",
-                "https://github.com/dnSpy/dnSpy/releases/latest/download/dnSpy-net-win64.zip",
-                "tools/dnspy", false};
-            break;
-            
-        case GameEngineDetector::Flutter:
-            tools << Tool{"reFlutter", "Flutter reverse engineering",
-                "https://github.com/nicro950/reFlutter/archive/refs/heads/main.zip",
-                "tools/reflutter", true};
-            tools << Tool{"Blutter", "Dart AOT snapshot parser",
-                "https://github.com/pwnintended/blutter/archive/refs/heads/main.zip",
-                "tools/blutter", true};
-            break;
-            
-        case GameEngineDetector::Cocos2dx:
-            tools << Tool{"Cocos2dxLuaDec", "Lua script decryptor",
-                "https://github.com/nicro950/cocos2dx-luadec/archive/refs/heads/main.zip",
-                "tools/luadec", true};
-            break;
-            
-        case GameEngineDetector::UnrealEngine:
-            tools << Tool{"UE4Pak", "Unreal pak file extractor",
-                "https://github.com/nicro950/ue4pak/releases/latest/download/ue4pak-win.zip",
-                "tools/ue4pak", true};
-            break;
-            
-        default:
-            break;
-        }
-        
-        return tools;
-    }
-    
-    static bool isToolInstalled(const QString &toolPath) {
-        return QDir(toolPath).exists();
-    }
-};
-
-// ============== AI Game Mod Assistant ==============
-
-class AIGameModAssistant
-{
-public:
-    static QString generateModPrompt(GameEngineDetector::Engine engine, const QString &projectPath) {
-        QString prompt = "Analyze this Android game for modding opportunities:\n\n";
-        prompt += QString("Engine: %1\n").arg(GameEngineDetector::engineName(engine));
-        prompt += QString("Project: %1\n\n").arg(projectPath);
-        
-        switch (engine) {
-        case GameEngineDetector::Unity:
-            prompt += "Focus on:\n";
-            prompt += "1. IL2CPP metadata extraction for game values\n";
-            prompt += "2. PlayerPrefs and saved game data locations\n";
-            prompt += "3. In-app purchase validation bypass\n";
-            prompt += "4. Anti-cheat detection and bypass\n";
-            prompt += "5. Game currency and stats modification\n";
-            prompt += "6. Asset extraction and modification\n";
-            break;
-            
-        case GameEngineDetector::Flutter:
-            prompt += "Focus on:\n";
-            prompt += "1. libflutter.so analysis for SSL pinning\n";
-            prompt += "2. libapp.so Dart snapshot analysis\n";
-            prompt += "3. API endpoint extraction\n";
-            prompt += "4. Authentication bypass\n";
-            prompt += "5. Premium feature unlock\n";
-            break;
-            
-        default:
-            prompt += "Analyze for common game modifications like:\n";
-            prompt += "1. Game values (currency, lives, stats)\n";
-            prompt += "2. Anti-cheat bypasses\n";
-            prompt += "3. Premium unlocks\n";
-            prompt += "4. SSL pinning bypass\n";
-            break;
-        }
-        
-        prompt += "\nProvide specific file paths and modification instructions.";
-        return prompt;
-    }
-    
-    static QString generatePatchPrompt(const QString &targetFile, const QString &modType) {
-        QString prompt = QString("Generate a patch for %1\n\n").arg(targetFile);
-        prompt += QString("Modification type: %1\n\n").arg(modType);
-        prompt += "Provide:\n";
-        prompt += "1. Exact bytes to find (hex)\n";
-        prompt += "2. Replacement bytes (hex)\n";
-        prompt += "3. Explanation of the patch\n";
-        prompt += "4. Risk assessment\n";
-        return prompt;
-    }
-    
-    static QString generateValueSearchPrompt(const QString &projectPath) {
-        return QString(
-            "Search for modifiable game values in %1:\n\n"
-            "Look for:\n"
-            "- Numeric constants (health, damage, speed, currency)\n"
-            "- Boolean flags (isPremium, isUnlocked, hasAds)\n"
-            "- String values (API endpoints, version checks)\n"
-            "- Configuration files (JSON, XML, binary)\n\n"
-            "Provide file paths and line numbers."
-        ).arg(projectPath);
-    }
-};
 void NativeLibAnalyzerDialog::parseElfHeader() {}
 void NativeLibAnalyzerDialog::parseSymbolTable() {}
 void NativeLibAnalyzerDialog::findInterestingPatterns() {}
 void NativeLibAnalyzerDialog::askAI(const QString &, std::function<void(const QString&)>) {}
+
+// ============== AI-Powered Tool Downloader ==============
+
+QList<GameModToolDownloader::Tool> GameModToolDownloader::getRequiredTools(GameEngineDetector::Engine engine) {
+    QList<Tool> tools;
+
+    switch (engine) {
+    case GameEngineDetector::Unity:
+        tools << Tool{"Il2CppDumper", "Dumps IL2CPP metadata",
+            "https://github.com/Perfare/Il2CppDumper/releases/latest/download/Il2CppDumper-net6-win.zip",
+            "tools/il2cppdumper", true};
+        tools << Tool{"AssetStudio", "Unity asset extractor",
+            "https://github.com/Perfare/AssetStudio/releases/latest/download/AssetStudio.net6.v0.16.0.zip",
+            "tools/assetstudio", false};
+        tools << Tool{"dnSpy", "Mono assembly decompiler",
+            "https://github.com/dnSpy/dnSpy/releases/latest/download/dnSpy-net-win64.zip",
+            "tools/dnspy", false};
+        break;
+
+    case GameEngineDetector::Flutter:
+        tools << Tool{"reFlutter", "Flutter reverse engineering",
+            "https://github.com/nicro950/reFlutter/archive/refs/heads/main.zip",
+            "tools/reflutter", true};
+        tools << Tool{"Blutter", "Dart AOT snapshot parser",
+            "https://github.com/pwnintended/blutter/archive/refs/heads/main.zip",
+            "tools/blutter", true};
+        break;
+
+    case GameEngineDetector::Cocos2dx:
+        tools << Tool{"Cocos2dxLuaDec", "Lua script decryptor",
+            "https://github.com/nicro950/cocos2dx-luadec/archive/refs/heads/main.zip",
+            "tools/luadec", true};
+        break;
+
+    case GameEngineDetector::UnrealEngine:
+        tools << Tool{"UE4Pak", "Unreal pak file extractor",
+            "https://github.com/nicro950/ue4pak/releases/latest/download/ue4pak-win.zip",
+            "tools/ue4pak", true};
+        break;
+
+    default:
+        break;
+    }
+
+    return tools;
+}
+
+bool GameModToolDownloader::isToolInstalled(const QString &toolPath) {
+    return QDir(toolPath).exists();
+}
+
+void GameModToolDownloader::downloadTool(const Tool &) {}
+void GameModToolDownloader::downloadAllTools(GameEngineDetector::Engine) {}
+
+// ============== AI Game Mod Assistant ==============
+
+QString AIGameModAssistant::generateModPrompt(GameEngineDetector::Engine engine, const QString &projectPath) {
+    QString prompt = "Analyze this Android game for modding opportunities:\n\n";
+    prompt += QString("Engine: %1\n").arg(GameEngineDetector::engineName(engine));
+    prompt += QString("Project: %1\n\n").arg(projectPath);
+
+    switch (engine) {
+    case GameEngineDetector::Unity:
+        prompt += "Focus on:\n";
+        prompt += "1. IL2CPP metadata extraction for game values\n";
+        prompt += "2. PlayerPrefs and saved game data locations\n";
+        prompt += "3. In-app purchase validation bypass\n";
+        prompt += "4. Anti-cheat detection and bypass\n";
+        prompt += "5. Game currency and stats modification\n";
+        prompt += "6. Asset extraction and modification\n";
+        break;
+
+    case GameEngineDetector::Flutter:
+        prompt += "Focus on:\n";
+        prompt += "1. libflutter.so analysis for SSL pinning\n";
+        prompt += "2. libapp.so Dart snapshot analysis\n";
+        prompt += "3. API endpoint extraction\n";
+        prompt += "4. Authentication bypass\n";
+        prompt += "5. Premium feature unlock\n";
+        break;
+
+    default:
+        prompt += "Analyze for common game modifications like:\n";
+        prompt += "1. Game values (currency, lives, stats)\n";
+        prompt += "2. Anti-cheat bypasses\n";
+        prompt += "3. Premium unlocks\n";
+        prompt += "4. SSL pinning bypass\n";
+        break;
+    }
+
+    prompt += "\nProvide specific file paths and modification instructions.";
+    return prompt;
+}
+
+QString AIGameModAssistant::generatePatchPrompt(const QString &targetFile, const QString &modType) {
+    QString prompt = QString("Generate a patch for %1\n\n").arg(targetFile);
+    prompt += QString("Modification type: %1\n\n").arg(modType);
+    prompt += "Provide:\n";
+    prompt += "1. Exact bytes to find (hex)\n";
+    prompt += "2. Replacement bytes (hex)\n";
+    prompt += "3. Explanation of the patch\n";
+    prompt += "4. Risk assessment\n";
+    return prompt;
+}
+
+QString AIGameModAssistant::generateValueSearchPrompt(const QString &projectPath) {
+    return QString(
+        "Search for modifiable game values in %1:\n\n"
+        "Look for:\n"
+        "- Numeric constants (health, damage, speed, currency)\n"
+        "- Boolean flags (isPremium, isUnlocked, hasAds)\n"
+        "- String values (API endpoints, version checks)\n"
+        "- Configuration files (JSON, XML, binary)\n\n"
+        "Provide file paths and line numbers."
+    ).arg(projectPath);
+}
+
+QString AIGameModAssistant::generateSSLBypassPrompt(const QString &projectPath) {
+    return QString(
+        "Analyze SSL pinning in Android app at %1:\n\n"
+        "1. Identify all SSL/TLS certificate pinning implementations\n"
+        "2. Find OkHttp CertificatePinner usage\n"
+        "3. Locate custom TrustManager implementations\n"
+        "4. Find network_security_config.xml settings\n"
+        "5. Provide specific smali patches for each method\n\n"
+        "Format response with file paths and exact code changes."
+    ).arg(projectPath);
+}
+
+QString AIGameModAssistant::generateAntiCheatBypassPrompt(const QString &projectPath) {
+    return QString(
+        "Analyze anti-cheat/anti-tampering in Android app at %1:\n\n"
+        "1. Find SafetyNet/Play Integrity API calls\n"
+        "2. Locate root detection methods\n"
+        "3. Identify signature verification checks\n"
+        "4. Find debugger detection code\n"
+        "5. Locate Frida/Xposed detection\n\n"
+        "Provide bypass patches for each detection method."
+    ).arg(projectPath);
+}
+
+QString AIGameModAssistant::generateIAPBypassPrompt(const QString &projectPath) {
+    return QString(
+        "Analyze In-App Purchase validation in Android app at %1:\n\n"
+        "1. Find Google Play Billing Library usage\n"
+        "2. Locate purchase verification methods\n"
+        "3. Identify server-side validation calls\n"
+        "4. Find premium/pro feature checks\n"
+        "5. Locate subscription status checks\n\n"
+        "Provide patches to bypass purchase validation."
+    ).arg(projectPath);
+}
 
 Cocos2dxAnalyzerDialog::Cocos2dxAnalyzerDialog(const QString &projectPath, QWidget *parent)
     : QDialog(parent), m_ProjectPath(projectPath)
@@ -2077,102 +2099,4 @@ void AIGameModDialog::logMessage(const QString &message, const QString &type)
     
     m_LogView->appendHtml(QString("<span style='color: #888;'>[%1]</span> <span style='color: %2;'>%3 %4</span>")
         .arg(timestamp, color, icon, message));
-}
-
-// Additional AI prompt generators
-QString AIGameModAssistant::generateSSLBypassPrompt(const QString &projectPath)
-{
-    return QString(
-        "Analyze SSL pinning in Android app at %1:\n\n"
-        "1. Identify all SSL/TLS certificate pinning implementations\n"
-        "2. Find OkHttp CertificatePinner usage\n"
-        "3. Locate custom TrustManager implementations\n"
-        "4. Find network_security_config.xml settings\n"
-        "5. Provide specific smali patches for each method\n\n"
-        "Format response with file paths and exact code changes."
-    ).arg(projectPath);
-}
-
-QString AIGameModAssistant::generateAntiCheatBypassPrompt(const QString &projectPath)
-{
-    return QString(
-        "Analyze anti-cheat/anti-tampering in Android app at %1:\n\n"
-        "1. Find SafetyNet/Play Integrity API calls\n"
-        "2. Locate root detection methods\n"
-        "3. Identify signature verification checks\n"
-        "4. Find debugger detection code\n"
-        "5. Locate Frida/Xposed detection\n\n"
-        "Provide bypass patches for each detection method."
-    ).arg(projectPath);
-}
-
-QString AIGameModAssistant::generateIAPBypassPrompt(const QString &projectPath)
-{
-    return QString(
-        "Analyze In-App Purchase validation in Android app at %1:\n\n"
-        "1. Find Google Play Billing Library usage\n"
-        "2. Locate purchase verification methods\n"
-        "3. Identify server-side validation calls\n"
-        "4. Find premium/pro feature checks\n"
-        "5. Locate subscription status checks\n\n"
-        "Provide patches to bypass purchase validation."
-    ).arg(projectPath);
-}
-
-void AIGameModDialog::applyPatch(const QString &file, const QByteArray &find, const QByteArray &replace)
-{
-    QFile f(file);
-    if (!f.open(QIODevice::ReadOnly)) {
-        logMessage(tr("Cannot open file: %1").arg(file), "error");
-        return;
-    }
-    
-    QByteArray content = f.readAll();
-    f.close();
-    
-    int pos = content.indexOf(find);
-    if (pos == -1) {
-        logMessage(tr("Pattern not found in: %1").arg(file), "warning");
-        return;
-    }
-    
-    content.replace(pos, find.size(), replace);
-    
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(content);
-        f.close();
-        logMessage(tr("Patched: %1").arg(file), "success");
-    }
-}
-
-void AIGameModDialog::logMessage(const QString &message, const QString &type)
-{
-    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-    QString color = "#c9d1d9";
-    
-    if (type == "success") {
-        color = "#3fb950";
-    } else if (type == "warning") {
-        color = "#d29922";
-    } else if (type == "error") {
-        color = "#f85149";
-    }
-    
-    m_LogView->appendHtml(QString("<span style='color: #888;'>[%1]</span> <span style='color: %2;'>%3</span>")
-        .arg(timestamp, color, message));
-}
-
-QString AIGameModAssistant::generateSSLBypassPrompt(const QString &projectPath)
-{
-    return QString("Analyze SSL pinning in Android app at %1 and provide bypass patches.").arg(projectPath);
-}
-
-QString AIGameModAssistant::generateAntiCheatBypassPrompt(const QString &projectPath)
-{
-    return QString("Analyze anti-cheat in Android app at %1 and provide bypass methods.").arg(projectPath);
-}
-
-QString AIGameModAssistant::generateIAPBypassPrompt(const QString &projectPath)
-{
-    return QString("Analyze IAP validation in Android app at %1 and provide bypass patches.").arg(projectPath);
 }
