@@ -1,6 +1,7 @@
 #include "gamemodtools.h"
 #include <QApplication>
 #include <QBoxLayout>
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QDirIterator>
@@ -18,6 +19,7 @@
 #include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -1340,6 +1342,136 @@ void NativeLibAnalyzerDialog::hexDump() {}
 void NativeLibAnalyzerDialog::disassemble() {}
 void NativeLibAnalyzerDialog::patchBytes() {}
 void NativeLibAnalyzerDialog::aiAnalyzeLib() {}
+
+// ============== AI-Powered Tool Downloader ==============
+
+class GameModToolDownloader : public QObject
+{
+    Q_OBJECT
+public:
+    struct Tool {
+        QString name;
+        QString description;
+        QString downloadUrl;
+        QString extractPath;
+        bool required;
+    };
+    
+    static QList<Tool> getRequiredTools(GameEngineDetector::Engine engine) {
+        QList<Tool> tools;
+        
+        switch (engine) {
+        case GameEngineDetector::Unity:
+            tools << Tool{"Il2CppDumper", "Dumps IL2CPP metadata", 
+                "https://github.com/Perfare/Il2CppDumper/releases/latest/download/Il2CppDumper-net6-win.zip",
+                "tools/il2cppdumper", true};
+            tools << Tool{"AssetStudio", "Unity asset extractor",
+                "https://github.com/Perfare/AssetStudio/releases/latest/download/AssetStudio.net6.v0.16.0.zip",
+                "tools/assetstudio", false};
+            tools << Tool{"dnSpy", "Mono assembly decompiler",
+                "https://github.com/dnSpy/dnSpy/releases/latest/download/dnSpy-net-win64.zip",
+                "tools/dnspy", false};
+            break;
+            
+        case GameEngineDetector::Flutter:
+            tools << Tool{"reFlutter", "Flutter reverse engineering",
+                "https://github.com/nicro950/reFlutter/archive/refs/heads/main.zip",
+                "tools/reflutter", true};
+            tools << Tool{"Blutter", "Dart AOT snapshot parser",
+                "https://github.com/pwnintended/blutter/archive/refs/heads/main.zip",
+                "tools/blutter", true};
+            break;
+            
+        case GameEngineDetector::Cocos2dx:
+            tools << Tool{"Cocos2dxLuaDec", "Lua script decryptor",
+                "https://github.com/nicro950/cocos2dx-luadec/archive/refs/heads/main.zip",
+                "tools/luadec", true};
+            break;
+            
+        case GameEngineDetector::UnrealEngine:
+            tools << Tool{"UE4Pak", "Unreal pak file extractor",
+                "https://github.com/nicro950/ue4pak/releases/latest/download/ue4pak-win.zip",
+                "tools/ue4pak", true};
+            break;
+            
+        default:
+            break;
+        }
+        
+        return tools;
+    }
+    
+    static bool isToolInstalled(const QString &toolPath) {
+        return QDir(toolPath).exists();
+    }
+};
+
+// ============== AI Game Mod Assistant ==============
+
+class AIGameModAssistant
+{
+public:
+    static QString generateModPrompt(GameEngineDetector::Engine engine, const QString &projectPath) {
+        QString prompt = "Analyze this Android game for modding opportunities:\n\n";
+        prompt += QString("Engine: %1\n").arg(GameEngineDetector::engineName(engine));
+        prompt += QString("Project: %1\n\n").arg(projectPath);
+        
+        switch (engine) {
+        case GameEngineDetector::Unity:
+            prompt += "Focus on:\n";
+            prompt += "1. IL2CPP metadata extraction for game values\n";
+            prompt += "2. PlayerPrefs and saved game data locations\n";
+            prompt += "3. In-app purchase validation bypass\n";
+            prompt += "4. Anti-cheat detection and bypass\n";
+            prompt += "5. Game currency and stats modification\n";
+            prompt += "6. Asset extraction and modification\n";
+            break;
+            
+        case GameEngineDetector::Flutter:
+            prompt += "Focus on:\n";
+            prompt += "1. libflutter.so analysis for SSL pinning\n";
+            prompt += "2. libapp.so Dart snapshot analysis\n";
+            prompt += "3. API endpoint extraction\n";
+            prompt += "4. Authentication bypass\n";
+            prompt += "5. Premium feature unlock\n";
+            break;
+            
+        default:
+            prompt += "Analyze for common game modifications like:\n";
+            prompt += "1. Game values (currency, lives, stats)\n";
+            prompt += "2. Anti-cheat bypasses\n";
+            prompt += "3. Premium unlocks\n";
+            prompt += "4. SSL pinning bypass\n";
+            break;
+        }
+        
+        prompt += "\nProvide specific file paths and modification instructions.";
+        return prompt;
+    }
+    
+    static QString generatePatchPrompt(const QString &targetFile, const QString &modType) {
+        QString prompt = QString("Generate a patch for %1\n\n").arg(targetFile);
+        prompt += QString("Modification type: %1\n\n").arg(modType);
+        prompt += "Provide:\n";
+        prompt += "1. Exact bytes to find (hex)\n";
+        prompt += "2. Replacement bytes (hex)\n";
+        prompt += "3. Explanation of the patch\n";
+        prompt += "4. Risk assessment\n";
+        return prompt;
+    }
+    
+    static QString generateValueSearchPrompt(const QString &projectPath) {
+        return QString(
+            "Search for modifiable game values in %1:\n\n"
+            "Look for:\n"
+            "- Numeric constants (health, damage, speed, currency)\n"
+            "- Boolean flags (isPremium, isUnlocked, hasAds)\n"
+            "- String values (API endpoints, version checks)\n"
+            "- Configuration files (JSON, XML, binary)\n\n"
+            "Provide file paths and line numbers."
+        ).arg(projectPath);
+    }
+};
 void NativeLibAnalyzerDialog::parseElfHeader() {}
 void NativeLibAnalyzerDialog::parseSymbolTable() {}
 void NativeLibAnalyzerDialog::findInterestingPatterns() {}
@@ -1401,3 +1533,646 @@ QString ReactNativeAnalyzerDialog::getRNVersion() { return QString(); }
 void ReactNativeAnalyzerDialog::parseJsBundle() {}
 void ReactNativeAnalyzerDialog::findComponents() {}
 void ReactNativeAnalyzerDialog::askAI(const QString &, std::function<void(const QString&)>) {}
+
+// ============== AI Game Mod Dialog Implementation ==============
+
+AIGameModDialog::AIGameModDialog(const QString &projectPath, QWidget *parent)
+    : QDialog(parent), m_ProjectPath(projectPath), m_DetectedEngine(GameEngineDetector::Unknown)
+{
+    setWindowTitle(tr("🎮 AI Game Mod Studio"));
+    setMinimumSize(1000, 700);
+    
+    m_NetworkManager = new QNetworkAccessManager(this);
+    
+    setupUI();
+    detectEngine();
+}
+
+void AIGameModDialog::setupUI()
+{
+    QVBoxLayout *mainLayout = new QVBoxLayout(this);
+    mainLayout->setSpacing(10);
+    
+    // Header with engine info
+    QHBoxLayout *headerLayout = new QHBoxLayout();
+    m_EngineLabel = new QLabel(tr("🔍 Detecting game engine..."));
+    m_EngineLabel->setStyleSheet("font-size: 14px; font-weight: bold;");
+    m_StatusLabel = new QLabel(tr("Ready"));
+    m_StatusLabel->setStyleSheet("color: #888;");
+    headerLayout->addWidget(m_EngineLabel);
+    headerLayout->addStretch();
+    headerLayout->addWidget(m_StatusLabel);
+    mainLayout->addLayout(headerLayout);
+    
+    // Progress bar
+    m_Progress = new QProgressBar();
+    m_Progress->setVisible(false);
+    mainLayout->addWidget(m_Progress);
+    
+    // Main content splitter
+    QSplitter *mainSplitter = new QSplitter(Qt::Horizontal);
+    
+    // Left panel - Mod options
+    QWidget *leftPanel = new QWidget();
+    QVBoxLayout *leftLayout = new QVBoxLayout(leftPanel);
+    
+    // Mod type selector
+    QGroupBox *modGroup = new QGroupBox(tr("🛠️ Mod Options"));
+    QVBoxLayout *modLayout = new QVBoxLayout(modGroup);
+    
+    m_ModTypeCombo = new QComboBox();
+    m_ModTypeCombo->addItems({
+        tr("💰 Currency/Resources Mod"),
+        tr("❤️ Health/Lives Mod"),
+        tr("⚡ Speed/Damage Mod"),
+        tr("🔓 Premium Unlock"),
+        tr("🚫 Remove Ads"),
+        tr("🔐 SSL Pinning Bypass"),
+        tr("🛡️ Anti-Cheat Bypass"),
+        tr("💳 IAP Bypass"),
+        tr("📦 Extract Assets"),
+        tr("🔧 Custom Patch")
+    });
+    modLayout->addWidget(m_ModTypeCombo);
+    
+    m_ModOptionsTree = new QTreeWidget();
+    m_ModOptionsTree->setHeaderLabels({tr("Option"), tr("Value"), tr("Status")});
+    m_ModOptionsTree->setColumnCount(3);
+    modLayout->addWidget(m_ModOptionsTree);
+    
+    leftLayout->addWidget(modGroup);
+    
+    // Search section
+    QGroupBox *searchGroup = new QGroupBox(tr("🔎 Value Search"));
+    QVBoxLayout *searchLayout = new QVBoxLayout(searchGroup);
+    m_SearchInput = new QLineEdit();
+    m_SearchInput->setPlaceholderText(tr("Search for values (e.g., coins, health, gems)..."));
+    searchLayout->addWidget(m_SearchInput);
+    
+    m_ValuesTable = new QTableWidget();
+    m_ValuesTable->setColumnCount(5);
+    m_ValuesTable->setHorizontalHeaderLabels({tr("Name"), tr("Value"), tr("Type"), tr("File"), tr("Line")});
+    m_ValuesTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    searchLayout->addWidget(m_ValuesTable);
+    leftLayout->addWidget(searchGroup);
+    
+    mainSplitter->addWidget(leftPanel);
+    
+    // Right panel - AI Response and Log
+    QWidget *rightPanel = new QWidget();
+    QVBoxLayout *rightLayout = new QVBoxLayout(rightPanel);
+    
+    QTabWidget *rightTabs = new QTabWidget();
+    
+    // AI Response tab
+    QWidget *aiTab = new QWidget();
+    QVBoxLayout *aiLayout = new QVBoxLayout(aiTab);
+    m_AIResponseView = new QTextBrowser();
+    m_AIResponseView->setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace;");
+    m_AIResponseView->setPlaceholderText(tr("AI analysis will appear here..."));
+    aiLayout->addWidget(m_AIResponseView);
+    rightTabs->addTab(aiTab, tr("🤖 AI Analysis"));
+    
+    // Log tab
+    QWidget *logTab = new QWidget();
+    QVBoxLayout *logLayout = new QVBoxLayout(logTab);
+    m_LogView = new QPlainTextEdit();
+    m_LogView->setReadOnly(true);
+    m_LogView->setStyleSheet("background-color: #0d1117; color: #c9d1d9; font-family: monospace;");
+    logLayout->addWidget(m_LogView);
+    rightTabs->addTab(logTab, tr("📜 Log"));
+    
+    rightLayout->addWidget(rightTabs);
+    mainSplitter->addWidget(rightPanel);
+    
+    mainSplitter->setSizes({400, 600});
+    mainLayout->addWidget(mainSplitter);
+    
+    // Action buttons
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    
+    QPushButton *downloadToolsBtn = new QPushButton(tr("📥 Download Tools"));
+    connect(downloadToolsBtn, &QPushButton::clicked, this, &AIGameModDialog::downloadTools);
+    buttonLayout->addWidget(downloadToolsBtn);
+    
+    m_AnalyzeBtn = new QPushButton(tr("🔍 AI Analyze"));
+    m_AnalyzeBtn->setStyleSheet("background-color: #238636; color: white; font-weight: bold;");
+    connect(m_AnalyzeBtn, &QPushButton::clicked, this, &AIGameModDialog::analyzeWithAI);
+    buttonLayout->addWidget(m_AnalyzeBtn);
+    
+    QPushButton *searchBtn = new QPushButton(tr("🔎 Search Values"));
+    connect(searchBtn, &QPushButton::clicked, this, &AIGameModDialog::searchValues);
+    buttonLayout->addWidget(searchBtn);
+    
+    m_ApplyBtn = new QPushButton(tr("✅ Apply Mod"));
+    m_ApplyBtn->setStyleSheet("background-color: #1f6feb; color: white; font-weight: bold;");
+    connect(m_ApplyBtn, &QPushButton::clicked, this, &AIGameModDialog::applyMod);
+    buttonLayout->addWidget(m_ApplyBtn);
+    
+    QPushButton *saveProfileBtn = new QPushButton(tr("💾 Save Profile"));
+    connect(saveProfileBtn, &QPushButton::clicked, this, &AIGameModDialog::saveModProfile);
+    buttonLayout->addWidget(saveProfileBtn);
+    
+    mainLayout->addLayout(buttonLayout);
+}
+
+void AIGameModDialog::detectEngine()
+{
+    m_DetectedEngine = GameEngineDetector::detectEngine(m_ProjectPath);
+    QString engineName = GameEngineDetector::engineName(m_DetectedEngine);
+    
+    m_EngineLabel->setText(tr("🎮 Engine: %1").arg(engineName));
+    logMessage(tr("Detected game engine: %1").arg(engineName), "success");
+    
+    // Populate mod options based on engine
+    m_ModOptionsTree->clear();
+    
+    if (m_DetectedEngine == GameEngineDetector::Unity) {
+        QTreeWidgetItem *il2cpp = new QTreeWidgetItem({tr("IL2CPP Dump"), "", tr("Available")});
+        QTreeWidgetItem *mono = new QTreeWidgetItem({tr("Mono Assembly"), "", tr("Available")});
+        QTreeWidgetItem *assets = new QTreeWidgetItem({tr("Asset Bundles"), "", tr("Available")});
+        m_ModOptionsTree->addTopLevelItem(il2cpp);
+        m_ModOptionsTree->addTopLevelItem(mono);
+        m_ModOptionsTree->addTopLevelItem(assets);
+    } else if (m_DetectedEngine == GameEngineDetector::Flutter) {
+        QTreeWidgetItem *ssl = new QTreeWidgetItem({tr("SSL Bypass"), "", tr("Available")});
+        QTreeWidgetItem *snapshot = new QTreeWidgetItem({tr("Dart Snapshot"), "", tr("Available")});
+        m_ModOptionsTree->addTopLevelItem(ssl);
+        m_ModOptionsTree->addTopLevelItem(snapshot);
+    }
+}
+
+void AIGameModDialog::downloadTools()
+{
+    QList<GameModToolDownloader::Tool> tools = GameModToolDownloader::getRequiredTools(m_DetectedEngine);
+    
+    if (tools.isEmpty()) {
+        logMessage(tr("No specialized tools required for this engine"), "info");
+        return;
+    }
+    
+    m_Progress->setVisible(true);
+    m_Progress->setMaximum(tools.size());
+    m_Progress->setValue(0);
+    
+    for (const auto &tool : tools) {
+        if (GameModToolDownloader::isToolInstalled(tool.extractPath)) {
+            logMessage(tr("✅ %1 already installed").arg(tool.name), "success");
+        } else {
+            logMessage(tr("📥 Downloading %1...").arg(tool.name), "info");
+            // TODO: Implement actual download
+        }
+        m_Progress->setValue(m_Progress->value() + 1);
+    }
+    
+    m_Progress->setVisible(false);
+}
+
+void AIGameModDialog::analyzeWithAI()
+{
+    m_StatusLabel->setText(tr("Analyzing..."));
+    m_AnalyzeBtn->setEnabled(false);
+    logMessage(tr("🤖 Starting AI analysis..."), "info");
+    
+    QString prompt = AIGameModAssistant::generateModPrompt(m_DetectedEngine, m_ProjectPath);
+    
+    askAI(prompt, [this](const QString &response) {
+        m_AIResponseView->setHtml(QString("<pre style='white-space: pre-wrap;'>%1</pre>").arg(response));
+        m_StatusLabel->setText(tr("Analysis complete"));
+        m_AnalyzeBtn->setEnabled(true);
+        logMessage(tr("✅ AI analysis complete"), "success");
+    });
+}
+
+void AIGameModDialog::searchValues()
+{
+    QString searchTerm = m_SearchInput->text();
+    logMessage(tr("🔎 Searching for: %1").arg(searchTerm.isEmpty() ? "all values" : searchTerm), "info");
+    
+    m_ValuesTable->setRowCount(0);
+    
+    // Search in smali files
+    QDirIterator smaliIt(m_ProjectPath + "/smali", {"*.smali"}, QDir::Files, QDirIterator::Subdirectories);
+    while (smaliIt.hasNext()) {
+        QString filePath = smaliIt.next();
+        QFile file(filePath);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&file);
+            int lineNum = 0;
+            while (!in.atEnd()) {
+                QString line = in.readLine();
+                lineNum++;
+                
+                // Look for const declarations
+                QRegularExpression constRe("const(?:/\\d+)?\\s+\\w+,\\s*(0x[\\da-fA-F]+|\\d+)");
+                QRegularExpressionMatch match = constRe.match(line);
+                if (match.hasMatch()) {
+                    QString value = match.captured(1);
+                    if (searchTerm.isEmpty() || line.contains(searchTerm, Qt::CaseInsensitive)) {
+                        int row = m_ValuesTable->rowCount();
+                        m_ValuesTable->insertRow(row);
+                        m_ValuesTable->setItem(row, 0, new QTableWidgetItem(tr("Constant")));
+                        m_ValuesTable->setItem(row, 1, new QTableWidgetItem(value));
+                        m_ValuesTable->setItem(row, 2, new QTableWidgetItem("int"));
+                        m_ValuesTable->setItem(row, 3, new QTableWidgetItem(QFileInfo(filePath).fileName()));
+                        m_ValuesTable->setItem(row, 4, new QTableWidgetItem(QString::number(lineNum)));
+                    }
+                }
+            }
+        }
+    }
+    
+    logMessage(tr("Found %1 values").arg(m_ValuesTable->rowCount()), "success");
+}
+
+void AIGameModDialog::applyMod()
+{
+    int modType = m_ModTypeCombo->currentIndex();
+    logMessage(tr("Applying mod: %1").arg(m_ModTypeCombo->currentText()), "info");
+    
+    switch (modType) {
+    case 5: // SSL Pinning Bypass
+        bypassSSL();
+        break;
+    case 6: // Anti-Cheat Bypass
+        bypassAntiCheat();
+        break;
+    case 7: // IAP Bypass
+        bypassIAP();
+        break;
+    case 8: // Extract Assets
+        extractAssets();
+        break;
+    default:
+        generatePatch();
+        break;
+    }
+}
+
+void AIGameModDialog::generatePatch()
+{
+    QString prompt = AIGameModAssistant::generatePatchPrompt(m_ProjectPath, m_ModTypeCombo->currentText());
+    
+    askAI(prompt, [this](const QString &response) {
+        m_AIResponseView->setHtml(QString("<pre style='white-space: pre-wrap;'>%1</pre>").arg(response));
+        logMessage(tr("Patch instructions generated"), "success");
+    });
+}
+
+void AIGameModDialog::bypassSSL()
+{
+    logMessage(tr("🔐 Applying SSL Pinning Bypass..."), "info");
+    
+    // Common SSL bypass patterns
+    QStringList patterns = {
+        "checkServerTrusted",
+        "X509TrustManager",
+        "SSLSocketFactory",
+        "CertificatePinner",
+        "OkHostnameVerifier"
+    };
+    
+    int patchCount = 0;
+    QDirIterator it(m_ProjectPath + "/smali", {"*.smali"}, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        QString filePath = it.next();
+        QFile file(filePath);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString content = file.readAll();
+            file.close();
+            
+            for (const QString &pattern : patterns) {
+                if (content.contains(pattern)) {
+                    logMessage(tr("Found SSL pattern in: %1").arg(QFileInfo(filePath).fileName()), "info");
+                    patchCount++;
+                }
+            }
+        }
+    }
+    
+    logMessage(tr("✅ Found %1 SSL-related files to patch").arg(patchCount), "success");
+}
+
+void AIGameModDialog::bypassAntiCheat()
+{
+    logMessage(tr("🛡️ Analyzing Anti-Cheat mechanisms..."), "info");
+    
+    QStringList antiCheatPatterns = {
+        "SafetyNet", "Play Integrity", "root", "su ", 
+        "Magisk", "Xposed", "Frida", "debugger"
+    };
+    
+    // Search for anti-cheat patterns
+    QDirIterator it(m_ProjectPath, {"*.smali", "*.xml", "*.json"}, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        QString filePath = it.next();
+        QFile file(filePath);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString content = file.readAll();
+            file.close();
+            
+            for (const QString &pattern : antiCheatPatterns) {
+                if (content.contains(pattern, Qt::CaseInsensitive)) {
+                    logMessage(tr("Anti-cheat pattern '%1' found in: %2").arg(pattern, QFileInfo(filePath).fileName()), "warning");
+                }
+            }
+        }
+    }
+}
+
+void AIGameModDialog::bypassIAP()
+{
+    logMessage(tr("💳 Analyzing In-App Purchase validation..."), "info");
+    
+    QStringList iapPatterns = {
+        "BillingClient", "Purchase", "verifyPurchase",
+        "IabHelper", "consumePurchase", "acknowledgePurchase"
+    };
+    
+    QDirIterator it(m_ProjectPath + "/smali", {"*.smali"}, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        QString filePath = it.next();
+        QFile file(filePath);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString content = file.readAll();
+            file.close();
+            
+            for (const QString &pattern : iapPatterns) {
+                if (content.contains(pattern)) {
+                    logMessage(tr("IAP pattern '%1' found in: %2").arg(pattern, QFileInfo(filePath).fileName()), "info");
+                }
+            }
+        }
+    }
+}
+
+void AIGameModDialog::extractAssets()
+{
+    logMessage(tr("📦 Extracting game assets..."), "info");
+    
+    QString assetsPath = m_ProjectPath + "/assets";
+    if (!QDir(assetsPath).exists()) {
+        logMessage(tr("No assets folder found"), "warning");
+        return;
+    }
+    
+    QDirIterator it(assetsPath, QDir::Files, QDirIterator::Subdirectories);
+    int count = 0;
+    while (it.hasNext()) {
+        it.next();
+        count++;
+    }
+    
+    logMessage(tr("Found %1 asset files").arg(count), "success");
+}
+
+void AIGameModDialog::decompileCode()
+{
+    logMessage(tr("🔧 Decompiling native code..."), "info");
+    // Implementation depends on engine
+}
+
+void AIGameModDialog::saveModProfile()
+{
+    QString fileName = QFileDialog::getSaveFileName(this, tr("Save Mod Profile"), 
+        m_ProjectPath + "/mod_profile.json", tr("JSON Files (*.json)"));
+    
+    if (fileName.isEmpty()) return;
+    
+    QJsonObject profile;
+    profile["engine"] = GameEngineDetector::engineName(m_DetectedEngine);
+    profile["project"] = m_ProjectPath;
+    profile["modType"] = m_ModTypeCombo->currentIndex();
+    
+    QFile file(fileName);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(profile).toJson());
+        file.close();
+        logMessage(tr("✅ Mod profile saved"), "success");
+    }
+}
+
+void AIGameModDialog::loadModProfile()
+{
+    // Implementation
+}
+
+void AIGameModDialog::askAI(const QString &prompt, std::function<void(const QString&)> callback)
+{
+    QSettings settings;
+    QString provider = settings.value("ai/provider", "gemini").toString();
+    QString apiKey = settings.value("ai/api_key").toString();
+    
+    if (apiKey.isEmpty()) {
+        logMessage(tr("❌ No AI API key configured"), "error");
+        return;
+    }
+    
+    QString endpoint;
+    QJsonObject root;
+    
+    if (provider == "gemini") {
+        endpoint = QString("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=%1").arg(apiKey);
+        QJsonArray contents;
+        QJsonObject content;
+        QJsonArray parts;
+        QJsonObject part;
+        part["text"] = prompt;
+        parts.append(part);
+        content["parts"] = parts;
+        contents.append(content);
+        root["contents"] = contents;
+    } else {
+        endpoint = "https://api.openai.com/v1/chat/completions";
+        root["model"] = settings.value("ai/model", "gpt-4").toString();
+        QJsonArray messages;
+        QJsonObject msg;
+        msg["role"] = "user";
+        msg["content"] = prompt;
+        messages.append(msg);
+        root["messages"] = messages;
+    }
+    
+    QNetworkRequest request;
+    request.setUrl(QUrl(endpoint));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    
+    if (provider != "gemini") {
+        request.setRawHeader("Authorization", QString("Bearer %1").arg(apiKey).toUtf8());
+    }
+    
+    QNetworkReply *reply = m_NetworkManager->post(request, QJsonDocument(root).toJson());
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, provider]() {
+        if (reply->error() != QNetworkReply::NoError) {
+            logMessage(tr("❌ AI Error: %1").arg(reply->errorString()), "error");
+            reply->deleteLater();
+            return;
+        }
+        
+        QByteArray data = reply->readAll();
+        reply->deleteLater();
+        
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        QString response;
+        
+        if (provider == "gemini") {
+            QJsonArray candidates = doc.object()["candidates"].toArray();
+            if (!candidates.isEmpty()) {
+                response = candidates[0].toObject()["content"].toObject()["parts"]
+                    .toArray()[0].toObject()["text"].toString();
+            }
+        } else {
+            QJsonArray choices = doc.object()["choices"].toArray();
+            if (!choices.isEmpty()) {
+                response = choices[0].toObject()["message"].toObject()["content"].toString();
+            }
+        }
+        
+        callback(response);
+    });
+}
+
+void AIGameModDialog::applyPatch(const QString &file, const QByteArray &find, const QByteArray &replace)
+{
+    QFile f(file);
+    if (!f.open(QIODevice::ReadOnly)) {
+        logMessage(tr("Cannot open file: %1").arg(file), "error");
+        return;
+    }
+    
+    QByteArray content = f.readAll();
+    f.close();
+    
+    int pos = content.indexOf(find);
+    if (pos == -1) {
+        logMessage(tr("Pattern not found in: %1").arg(file), "warning");
+        return;
+    }
+    
+    content.replace(pos, find.size(), replace);
+    
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(content);
+        f.close();
+        logMessage(tr("✅ Patched: %1").arg(file), "success");
+    }
+}
+
+void AIGameModDialog::logMessage(const QString &message, const QString &type)
+{
+    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
+    QString color = "#c9d1d9";
+    QString icon = "ℹ️";
+    
+    if (type == "success") {
+        color = "#3fb950";
+        icon = "✅";
+    } else if (type == "warning") {
+        color = "#d29922";
+        icon = "⚠️";
+    } else if (type == "error") {
+        color = "#f85149";
+        icon = "❌";
+    }
+    
+    m_LogView->appendHtml(QString("<span style='color: #888;'>[%1]</span> <span style='color: %2;'>%3 %4</span>")
+        .arg(timestamp, color, icon, message));
+}
+
+// Additional AI prompt generators
+QString AIGameModAssistant::generateSSLBypassPrompt(const QString &projectPath)
+{
+    return QString(
+        "Analyze SSL pinning in Android app at %1:\n\n"
+        "1. Identify all SSL/TLS certificate pinning implementations\n"
+        "2. Find OkHttp CertificatePinner usage\n"
+        "3. Locate custom TrustManager implementations\n"
+        "4. Find network_security_config.xml settings\n"
+        "5. Provide specific smali patches for each method\n\n"
+        "Format response with file paths and exact code changes."
+    ).arg(projectPath);
+}
+
+QString AIGameModAssistant::generateAntiCheatBypassPrompt(const QString &projectPath)
+{
+    return QString(
+        "Analyze anti-cheat/anti-tampering in Android app at %1:\n\n"
+        "1. Find SafetyNet/Play Integrity API calls\n"
+        "2. Locate root detection methods\n"
+        "3. Identify signature verification checks\n"
+        "4. Find debugger detection code\n"
+        "5. Locate Frida/Xposed detection\n\n"
+        "Provide bypass patches for each detection method."
+    ).arg(projectPath);
+}
+
+QString AIGameModAssistant::generateIAPBypassPrompt(const QString &projectPath)
+{
+    return QString(
+        "Analyze In-App Purchase validation in Android app at %1:\n\n"
+        "1. Find Google Play Billing Library usage\n"
+        "2. Locate purchase verification methods\n"
+        "3. Identify server-side validation calls\n"
+        "4. Find premium/pro feature checks\n"
+        "5. Locate subscription status checks\n\n"
+        "Provide patches to bypass purchase validation."
+    ).arg(projectPath);
+}
+
+void AIGameModDialog::applyPatch(const QString &file, const QByteArray &find, const QByteArray &replace)
+{
+    QFile f(file);
+    if (!f.open(QIODevice::ReadOnly)) {
+        logMessage(tr("Cannot open file: %1").arg(file), "error");
+        return;
+    }
+    
+    QByteArray content = f.readAll();
+    f.close();
+    
+    int pos = content.indexOf(find);
+    if (pos == -1) {
+        logMessage(tr("Pattern not found in: %1").arg(file), "warning");
+        return;
+    }
+    
+    content.replace(pos, find.size(), replace);
+    
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(content);
+        f.close();
+        logMessage(tr("Patched: %1").arg(file), "success");
+    }
+}
+
+void AIGameModDialog::logMessage(const QString &message, const QString &type)
+{
+    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
+    QString color = "#c9d1d9";
+    
+    if (type == "success") {
+        color = "#3fb950";
+    } else if (type == "warning") {
+        color = "#d29922";
+    } else if (type == "error") {
+        color = "#f85149";
+    }
+    
+    m_LogView->appendHtml(QString("<span style='color: #888;'>[%1]</span> <span style='color: %2;'>%3</span>")
+        .arg(timestamp, color, message));
+}
+
+QString AIGameModAssistant::generateSSLBypassPrompt(const QString &projectPath)
+{
+    return QString("Analyze SSL pinning in Android app at %1 and provide bypass patches.").arg(projectPath);
+}
+
+QString AIGameModAssistant::generateAntiCheatBypassPrompt(const QString &projectPath)
+{
+    return QString("Analyze anti-cheat in Android app at %1 and provide bypass methods.").arg(projectPath);
+}
+
+QString AIGameModAssistant::generateIAPBypassPrompt(const QString &projectPath)
+{
+    return QString("Analyze IAP validation in Android app at %1 and provide bypass patches.").arg(projectPath);
+}

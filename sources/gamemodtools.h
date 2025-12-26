@@ -3,20 +3,27 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDialog>
 #include <QGroupBox>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QSplitter>
+#include <QTabWidget>
 #include <QTableWidget>
 #include <QTextBrowser>
 #include <QTreeWidget>
+#include <functional>
 
 // Unity Game Analyzer & Modder
 class UnityGameDialog : public QDialog
@@ -341,6 +348,93 @@ public:
     static QString engineName(Engine engine);
     static QStringList getEngineFiles(Engine engine);
     static bool supportsDecompilation(Engine engine);
+};
+
+// AI-Powered Tool Downloader
+class GameModToolDownloader : public QObject
+{
+    Q_OBJECT
+public:
+    struct Tool {
+        QString name;
+        QString description;
+        QString downloadUrl;
+        QString extractPath;
+        bool required;
+    };
+    
+    static QList<Tool> getRequiredTools(GameEngineDetector::Engine engine);
+    static bool isToolInstalled(const QString &toolPath);
+    
+signals:
+    void downloadProgress(int percent);
+    void downloadComplete(const QString &toolName);
+    void downloadError(const QString &error);
+    
+public slots:
+    void downloadTool(const Tool &tool);
+    void downloadAllTools(GameEngineDetector::Engine engine);
+    
+private:
+    QNetworkAccessManager *m_NetworkManager;
+};
+
+// AI Game Mod Assistant
+class AIGameModAssistant
+{
+public:
+    static QString generateModPrompt(GameEngineDetector::Engine engine, const QString &projectPath);
+    static QString generatePatchPrompt(const QString &targetFile, const QString &modType);
+    static QString generateValueSearchPrompt(const QString &projectPath);
+    static QString generateSSLBypassPrompt(const QString &projectPath);
+    static QString generateAntiCheatBypassPrompt(const QString &projectPath);
+    static QString generateIAPBypassPrompt(const QString &projectPath);
+};
+
+// Master Game Mod Dialog - AI-Powered comprehensive modding
+class AIGameModDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    explicit AIGameModDialog(const QString &projectPath, QWidget *parent = nullptr);
+    
+private slots:
+    void detectEngine();
+    void downloadTools();
+    void analyzeWithAI();
+    void applyMod();
+    void generatePatch();
+    void searchValues();
+    void bypassSSL();
+    void bypassAntiCheat();
+    void bypassIAP();
+    void extractAssets();
+    void decompileCode();
+    void saveModProfile();
+    void loadModProfile();
+    
+private:
+    void setupUI();
+    void askAI(const QString &prompt, std::function<void(const QString&)> callback);
+    void applyPatch(const QString &file, const QByteArray &find, const QByteArray &replace);
+    void logMessage(const QString &message, const QString &type = "info");
+    
+    QString m_ProjectPath;
+    GameEngineDetector::Engine m_DetectedEngine;
+    QNetworkAccessManager *m_NetworkManager;
+    
+    // UI Elements
+    QLabel *m_EngineLabel;
+    QLabel *m_StatusLabel;
+    QProgressBar *m_Progress;
+    QTreeWidget *m_ModOptionsTree;
+    QTableWidget *m_ValuesTable;
+    QPlainTextEdit *m_LogView;
+    QTextBrowser *m_AIResponseView;
+    QPushButton *m_AnalyzeBtn;
+    QPushButton *m_ApplyBtn;
+    QLineEdit *m_SearchInput;
+    QComboBox *m_ModTypeCombo;
 };
 
 #endif // GAMEMODTOOLS_H
