@@ -48,7 +48,7 @@ public:
     void toggleComment();
     void selectWord();
     void selectLine();
-    void selectAll();
+    void selectAllText();
     void joinLines();
     void sortLines();
     void removeDuplicateLines();

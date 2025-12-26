@@ -14,6 +14,9 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSettings>
+#include <QStackedWidget>
+#include <QTextCursor>
+#include <QTextEdit>
 #include <QTextStream>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -101,23 +104,24 @@ hr { border: none; border-top: 1px solid #3c3c3c; margin: 16px 0; }
 AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     : QWidget(parent), m_CurrentReply(nullptr), m_CliProcess(nullptr), 
       m_UseCliAgent(false), m_IsProcessingFileOps(false),
-      m_NodeAvailable(false), m_GeminiCliAvailable(false), m_CopilotCliAvailable(false)
+      m_NodeAvailable(false), m_GeminiCliAvailable(false), m_CopilotCliAvailable(false),
+      m_TerminalWidget(nullptr), m_TitleLabel(nullptr)
 {
     m_NetworkManager = new QNetworkAccessManager(this);
     
-    auto layout = new QVBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
+    m_MainLayout = new QVBoxLayout(this);
+    m_MainLayout->setContentsMargins(0, 0, 0, 0);
+    m_MainLayout->setSpacing(0);
     
     // Header with buttons - VS Code style
-    auto headerWidget = new QWidget(this);
-    headerWidget->setStyleSheet("background: #252526; border-bottom: 1px solid #3c3c3c;");
-    auto headerLayout = new QHBoxLayout(headerWidget);
+    m_HeaderWidget = new QWidget(this);
+    m_HeaderWidget->setStyleSheet("background: #252526; border-bottom: 1px solid #3c3c3c;");
+    auto headerLayout = new QHBoxLayout(m_HeaderWidget);
     headerLayout->setContentsMargins(12, 8, 12, 8);
     
-    auto titleLabel = new QLabel(tr("AI ASSISTANT"), this);
-    titleLabel->setStyleSheet("font-weight: 600; font-size: 11px; color: #cccccc; letter-spacing: 1px;");
-    headerLayout->addWidget(titleLabel);
+    m_TitleLabel = new QLabel(tr("AI ASSISTANT"), this);
+    m_TitleLabel->setStyleSheet("font-weight: 600; font-size: 11px; color: #cccccc; letter-spacing: 1px;");
+    headerLayout->addWidget(m_TitleLabel);
     headerLayout->addStretch();
     
     // Mode selector (API vs CLI Agent)
@@ -188,7 +192,16 @@ AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     connect(m_ClearButton, &QPushButton::clicked, this, &AIConsoleWidget::clear);
     headerLayout->addWidget(m_ClearButton);
     
-    layout->addWidget(headerWidget);
+    m_MainLayout->addWidget(m_HeaderWidget);
+    
+    // Stacked widget to switch between AI Assistant and Terminal
+    m_StackedWidget = new QStackedWidget(this);
+    
+    // ===== AI ASSISTANT VIEW =====
+    m_AiAssistantWidget = new QWidget(this);
+    auto aiLayout = new QVBoxLayout(m_AiAssistantWidget);
+    aiLayout->setContentsMargins(0, 0, 0, 0);
+    aiLayout->setSpacing(0);
     
     // Console output - using QTextBrowser for HTML
     m_OutputConsole = new QTextBrowser(this);
@@ -203,7 +216,7 @@ AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     m_HtmlContent += "</div>";
     m_OutputConsole->setHtml(m_HtmlContent + "</body></html>");
     
-    layout->addWidget(m_OutputConsole, 1);
+    aiLayout->addWidget(m_OutputConsole, 1);
     
     // Input area - VS Code style
     auto inputWidget = new QWidget(this);
@@ -248,7 +261,62 @@ AIConsoleWidget::AIConsoleWidget(QWidget *parent)
     connect(m_SendButton, &QPushButton::clicked, this, &AIConsoleWidget::handleSendMessage);
     inputLayout->addWidget(m_SendButton);
     
-    layout->addWidget(inputWidget);
+    aiLayout->addWidget(inputWidget);
+    
+    m_StackedWidget->addWidget(m_AiAssistantWidget);
+    
+    // ===== TERMINAL VIEW =====
+    m_TerminalWidget = new QWidget(this);
+    auto termLayout = new QVBoxLayout(m_TerminalWidget);
+    termLayout->setContentsMargins(0, 0, 0, 0);
+    termLayout->setSpacing(0);
+    
+    // Terminal output area
+    m_TerminalOutput = new QTextEdit(this);
+    m_TerminalOutput->setReadOnly(true);
+    m_TerminalOutput->setFrameStyle(QFrame::NoFrame);
+    m_TerminalOutput->setStyleSheet(R"(
+        QTextEdit {
+            background: #0c0c0c;
+            color: #cccccc;
+            font-family: 'Cascadia Code', 'Consolas', 'JetBrains Mono', monospace;
+            font-size: 13px;
+            border: none;
+            padding: 8px;
+        }
+    )");
+    termLayout->addWidget(m_TerminalOutput, 1);
+    
+    // Terminal input area
+    auto termInputWidget = new QWidget(this);
+    termInputWidget->setStyleSheet("background: #1e1e1e; border-top: 1px solid #3c3c3c;");
+    auto termInputLayout = new QHBoxLayout(termInputWidget);
+    termInputLayout->setContentsMargins(8, 6, 8, 6);
+    termInputLayout->setSpacing(8);
+    
+    auto promptLabel = new QLabel(tr("❯"), this);
+    promptLabel->setStyleSheet("color: #4ec9b0; font-size: 14px; font-weight: bold;");
+    termInputLayout->addWidget(promptLabel);
+    
+    m_TerminalInput = new QLineEdit(this);
+    m_TerminalInput->setStyleSheet(R"(
+        QLineEdit {
+            background: transparent;
+            border: none;
+            color: #cccccc;
+            font-family: 'Cascadia Code', 'Consolas', 'JetBrains Mono', monospace;
+            font-size: 13px;
+        }
+    )");
+    m_TerminalInput->setPlaceholderText(tr("Type command or message for CLI agent..."));
+    connect(m_TerminalInput, &QLineEdit::returnPressed, this, &AIConsoleWidget::handleTerminalInput);
+    termInputLayout->addWidget(m_TerminalInput);
+    
+    termLayout->addWidget(termInputWidget);
+    
+    m_StackedWidget->addWidget(m_TerminalWidget);
+    
+    m_MainLayout->addWidget(m_StackedWidget, 1);
     
     // Check if AI is enabled
     QSettings settings;
@@ -1359,7 +1427,14 @@ void AIConsoleWidget::startCliAgent()
     if (command.isEmpty()) {
         appendSystemMessage(tr("❌ No CLI agent available for current configuration"));
         appendSystemMessage(tr("💡 Click the 🔧 button to check and install dependencies"));
+        // Stay in AI assistant view
+        m_ModeCombo->setCurrentIndex(0); // Switch back to API mode
         return;
+    }
+    
+    // Clear terminal output
+    if (m_TerminalOutput) {
+        m_TerminalOutput->clear();
     }
     
     m_CliProcess = new QProcess(this);
@@ -1367,7 +1442,11 @@ void AIConsoleWidget::startCliAgent()
     // Set working directory to project path if available
     if (!m_ProjectPath.isEmpty() && QDir(m_ProjectPath).exists()) {
         m_CliProcess->setWorkingDirectory(m_ProjectPath);
+        appendTerminalOutput(tr("📁 Working directory: %1\n\n").arg(m_ProjectPath), "#808080");
     }
+    
+    // Enable PTY mode for better terminal emulation
+    m_CliProcess->setProcessChannelMode(QProcess::MergedChannels);
     
     connect(m_CliProcess, &QProcess::readyReadStandardOutput, this, &AIConsoleWidget::handleCliOutput);
     connect(m_CliProcess, &QProcess::readyReadStandardError, this, &AIConsoleWidget::handleCliError);
@@ -1376,13 +1455,15 @@ void AIConsoleWidget::startCliAgent()
     
     QStringList args = getCliAgentArgs();
     
-    // For Gemini CLI, we don't need special args for interactive mode
-    // For gh copilot, we use "suggest" subcommand
+    QSettings settings;
+    QString provider = settings.value("ai_provider", "gemini").toString();
+    
+    appendTerminalOutput(tr("🚀 Starting %1 CLI Agent...\n").arg(provider.toUpper()), "#4ec9b0");
     
 #ifdef Q_OS_WIN
-    if (m_NvmAvailable && command == "gemini") {
-        // Use cmd to ensure nvm environment is loaded
-        m_CliProcess->start("cmd", QStringList() << "/c" << command);
+    if (command == "gemini") {
+        // On Windows, run gemini directly
+        m_CliProcess->start("cmd", QStringList() << "/c" << "gemini");
     } else {
         m_CliProcess->start(command, args);
     }
@@ -1397,13 +1478,19 @@ void AIConsoleWidget::startCliAgent()
 #endif
     
     if (m_CliProcess->waitForStarted(10000)) {
-        appendSystemMessage(tr("🤖 CLI Agent started: %1 %2").arg(command, args.join(" ")));
+        appendTerminalOutput(tr("✅ CLI Agent ready. Type your commands below.\n\n"), "#4ec9b0");
         m_UseCliAgent = true;
+        
+        // Switch to terminal view
+        switchToTerminalView();
     } else {
         QString error = m_CliProcess->errorString();
-        appendSystemMessage(tr("❌ Failed to start CLI agent: %1").arg(error));
+        appendTerminalOutput(tr("❌ Failed to start CLI agent: %1\n").arg(error), "#f14c4c");
         delete m_CliProcess;
         m_CliProcess = nullptr;
+        
+        // Stay in AI assistant view
+        m_ModeCombo->setCurrentIndex(0);
     }
 }
 
@@ -1471,7 +1558,7 @@ void AIConsoleWidget::handleCliOutput()
     
     QString output = m_CliProcess->readAllStandardOutput();
     if (!output.isEmpty()) {
-        appendMessage("assistant", output);
+        appendTerminalOutput(output);
     }
 }
 
@@ -1481,16 +1568,19 @@ void AIConsoleWidget::handleCliError()
     
     QString error = m_CliProcess->readAllStandardError();
     if (!error.isEmpty()) {
-        appendSystemMessage(tr("CLI Error: %1").arg(error));
+        appendTerminalOutput(error, "#f14c4c");
     }
 }
 
 void AIConsoleWidget::handleCliFinished(int exitCode, QProcess::ExitStatus status)
 {
     Q_UNUSED(status)
-    appendSystemMessage(tr("CLI Agent exited with code %1").arg(exitCode));
+    appendTerminalOutput(tr("\n[Process exited with code %1]\n").arg(exitCode), "#808080");
     m_UseCliAgent = false;
     m_CliProcess = nullptr;
+    
+    // Switch back to AI assistant view
+    switchToAiAssistantView();
 }
 
 void AIConsoleWidget::onModeChanged(int index)
@@ -1503,7 +1593,81 @@ void AIConsoleWidget::onModeChanged(int index)
             startCliAgent();
         } else {
             stopCliAgent();
+            switchToAiAssistantView();
         }
+    }
+}
+
+void AIConsoleWidget::handleTerminalInput()
+{
+    if (!m_TerminalInput) return;
+    
+    QString input = m_TerminalInput->text();
+    m_TerminalInput->clear();
+    
+    if (input.isEmpty()) return;
+    
+    // Echo input to terminal
+    appendTerminalOutput("❯ " + input + "\n", "#4ec9b0");
+    
+    // Send to CLI agent
+    sendToCliAgent(input);
+}
+
+void AIConsoleWidget::appendTerminalOutput(const QString &text, const QString &color)
+{
+    if (!m_TerminalOutput) return;
+    
+    QTextCursor cursor = m_TerminalOutput->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    
+    QTextCharFormat format;
+    if (!color.isEmpty()) {
+        format.setForeground(QColor(color));
+    } else {
+        format.setForeground(QColor("#cccccc"));
+    }
+    
+    cursor.insertText(text, format);
+    m_TerminalOutput->setTextCursor(cursor);
+    m_TerminalOutput->ensureCursorVisible();
+}
+
+void AIConsoleWidget::switchToTerminalView()
+{
+    if (m_StackedWidget && m_TerminalWidget) {
+        m_StackedWidget->setCurrentWidget(m_TerminalWidget);
+        if (m_TitleLabel) {
+            QSettings settings;
+            QString provider = settings.value("ai_provider", "gemini").toString();
+            if (provider == "gemini") {
+                m_TitleLabel->setText(tr("TERMINAL - GEMINI CLI"));
+            } else if (provider == "copilot") {
+                m_TitleLabel->setText(tr("TERMINAL - GITHUB COPILOT"));
+            } else {
+                m_TitleLabel->setText(tr("TERMINAL"));
+            }
+        }
+        if (m_TerminalInput) {
+            m_TerminalInput->setFocus();
+        }
+        // Hide AI-specific buttons
+        if (m_AnalyzeButton) m_AnalyzeButton->hide();
+    }
+}
+
+void AIConsoleWidget::switchToAiAssistantView()
+{
+    if (m_StackedWidget && m_AiAssistantWidget) {
+        m_StackedWidget->setCurrentWidget(m_AiAssistantWidget);
+        if (m_TitleLabel) {
+            m_TitleLabel->setText(tr("AI ASSISTANT"));
+        }
+        if (m_InputLine) {
+            m_InputLine->setFocus();
+        }
+        // Show AI-specific buttons
+        if (m_AnalyzeButton) m_AnalyzeButton->show();
     }
 }
 

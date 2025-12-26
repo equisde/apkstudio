@@ -1601,7 +1601,7 @@ void AdvancedCodeEditor::selectLine()
     setTextCursor(cursor);
 }
 
-void AdvancedCodeEditor::selectAll()
+void AdvancedCodeEditor::selectAllText()
 {
     QTextCursor cursor = textCursor();
     cursor.select(QTextCursor::Document);
@@ -1641,7 +1641,7 @@ void AdvancedCodeEditor::sortLines()
 {
     QTextCursor cursor = textCursor();
     if (!cursor.hasSelection()) {
-        selectAll();
+        selectAllText();
         cursor = textCursor();
     }
     
@@ -1667,7 +1667,7 @@ void AdvancedCodeEditor::removeDuplicateLines()
 {
     QTextCursor cursor = textCursor();
     if (!cursor.hasSelection()) {
-        selectAll();
+        selectAllText();
         cursor = textCursor();
     }
     

@@ -2,12 +2,16 @@
 #define AICONSOLEWIDGET_H
 
 #include <QComboBox>
+#include <QLabel>
 #include <QLineEdit>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QProcess>
 #include <QPushButton>
+#include <QStackedWidget>
 #include <QTextBrowser>
+#include <QTextEdit>
+#include <QVBoxLayout>
 #include <QWidget>
 
 class AIConsoleWidget : public QWidget
@@ -39,10 +43,19 @@ private slots:
     void checkDependencies();
     void installDependencies();
     void installCliAgent();
+    void handleTerminalInput();
     
 private:
     // UI elements
+    QVBoxLayout *m_MainLayout;
+    QWidget *m_HeaderWidget;
+    QLabel *m_TitleLabel;
+    QStackedWidget *m_StackedWidget;
+    QWidget *m_AiAssistantWidget;
+    QWidget *m_TerminalWidget;
     QTextBrowser *m_OutputConsole;
+    QTextEdit *m_TerminalOutput;
+    QLineEdit *m_TerminalInput;
     QLineEdit *m_InputLine;
     QPushButton *m_SendButton;
     QPushButton *m_AnalyzeButton;
@@ -103,6 +116,9 @@ private:
     void sendToCliAgent(const QString &message);
     QString getCliAgentCommand();
     QStringList getCliAgentArgs();
+    void appendTerminalOutput(const QString &text, const QString &color = QString());
+    void switchToTerminalView();
+    void switchToAiAssistantView();
     
     // System prompt for file operations
     QString getSystemPrompt();
