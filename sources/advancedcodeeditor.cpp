@@ -29,7 +29,8 @@
 #define SIDEBAR_FOLD_WIDTH 16
 
 AdvancedCodeEditor::AdvancedCodeEditor(QWidget *parent)
-    : QPlainTextEdit(parent), m_NetworkManager(nullptr), m_Completer(nullptr)
+    : QPlainTextEdit(parent), m_NetworkManager(nullptr), m_Completer(nullptr),
+      m_LastSearchCaseSensitive(false), m_LastSearchWholeWord(false), m_LastSearchRegex(false)
 {
     m_Sidebar = new CodeEditorSidebar(this);
     m_Minimap = new CodeEditorMinimap(this);
@@ -37,6 +38,12 @@ AdvancedCodeEditor::AdvancedCodeEditor(QWidget *parent)
     m_CompletionTimer = new QTimer(this);
     m_CompletionTimer->setSingleShot(true);
     m_CompletionTimer->setInterval(300);
+    
+    // Symbol update timer
+    m_SymbolUpdateTimer = new QTimer(this);
+    m_SymbolUpdateTimer->setSingleShot(true);
+    m_SymbolUpdateTimer->setInterval(1000);
+    connect(m_SymbolUpdateTimer, &QTimer::timeout, this, &AdvancedCodeEditor::extractSymbols);
     
     // Modern font setup
     QSettings settings;
@@ -76,6 +83,7 @@ AdvancedCodeEditor::AdvancedCodeEditor(QWidget *parent)
     connect(this, &QPlainTextEdit::textChanged, this, &AdvancedCodeEditor::handleTextChanged);
     connect(this, &QPlainTextEdit::updateRequest, this, &AdvancedCodeEditor::handleUpdateRequest);
     connect(m_CompletionTimer, &QTimer::timeout, this, &AdvancedCodeEditor::showCompletions);
+    connect(document(), &QTextDocument::modificationChanged, this, &AdvancedCodeEditor::modifiedChanged);
     
     // Keyboard shortcuts
     new QShortcut(Qt::CTRL | Qt::Key_D, this, [this]() { duplicateLine(); });
@@ -84,6 +92,14 @@ AdvancedCodeEditor::AdvancedCodeEditor(QWidget *parent)
     new QShortcut(Qt::ALT | Qt::Key_Down, this, [this]() { moveLineDown(); });
     new QShortcut(Qt::CTRL | Qt::Key_Slash, this, [this]() { toggleComment(); });
     new QShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_F, this, [this]() { formatDocument(); });
+    new QShortcut(Qt::CTRL | Qt::Key_J, this, [this]() { joinLines(); });
+    new QShortcut(Qt::CTRL | Qt::Key_L, this, [this]() { selectLine(); });
+    new QShortcut(Qt::CTRL | Qt::Key_W, this, [this]() { selectWord(); });
+    new QShortcut(Qt::CTRL | Qt::Key_M, this, [this]() { toggleBookmark(); });
+    new QShortcut(Qt::Key_F2, this, [this]() { nextBookmark(); });
+    new QShortcut(Qt::SHIFT | Qt::Key_F2, this, [this]() { previousBookmark(); });
+    new QShortcut(Qt::Key_F3, this, [this]() { findNext(); });
+    new QShortcut(Qt::SHIFT | Qt::Key_F3, this, [this]() { findPrevious(); });
     new QShortcut(Qt::CTRL | Qt::Key_U, this, [this]() {
         QTextCursor c = textCursor();
         if (c.hasSelection()) {
@@ -96,6 +112,7 @@ AdvancedCodeEditor::AdvancedCodeEditor(QWidget *parent)
             c.insertText(c.selectedText().toLower());
         }
     });
+    new QShortcut(Qt::CTRL | Qt::Key_Backspace, this, [this]() { deleteWord(); });
     
     // Setup completer
     m_Completer = new QCompleter(this);
@@ -231,6 +248,12 @@ void AdvancedCodeEditor::formatDocument()
         formatted = formatJava(content);
     } else if (m_FileType == "dart") {
         formatted = formatDart(content);
+    } else if (m_FileType == "html") {
+        formatted = formatHtml(content);
+    } else if (m_FileType == "css") {
+        formatted = formatCss(content);
+    } else if (m_FileType == "properties") {
+        formatted = formatProperties(content);
     } else {
         QToolTip::showText(mapToGlobal(cursorRect().topLeft()), 
             tr("No formatter available for %1 files").arg(m_FileType), this);
@@ -754,7 +777,9 @@ void AdvancedCodeEditor::handleUpdateRequest(const QRect &rect, int dy)
 void AdvancedCodeEditor::handleTextChanged()
 {
     m_CompletionTimer->start();
+    m_SymbolUpdateTimer->start();
     m_Minimap->updateContent();
+    emit wordCountChanged(wordCount());
 }
 
 void AdvancedCodeEditor::showCompletions()
@@ -866,6 +891,29 @@ void AdvancedCodeEditor::contextMenuEvent(QContextMenuEvent *event)
     editMenu->addSeparator();
     editMenu->addAction(tr("Toggle Comment"), this, &AdvancedCodeEditor::toggleComment, QKeySequence(Qt::CTRL | Qt::Key_Slash));
     editMenu->addAction(tr("Format Document"), this, &AdvancedCodeEditor::formatDocument, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    editMenu->addSeparator();
+    editMenu->addAction(tr("Join Lines"), this, &AdvancedCodeEditor::joinLines, QKeySequence(Qt::CTRL | Qt::Key_J));
+    editMenu->addAction(tr("Sort Lines"), this, &AdvancedCodeEditor::sortLines);
+    editMenu->addAction(tr("Remove Duplicate Lines"), this, &AdvancedCodeEditor::removeDuplicateLines);
+    
+    // Selection
+    QMenu *selectMenu = menu->addMenu(tr("🔍 Selection"));
+    selectMenu->addAction(tr("Select Word"), this, &AdvancedCodeEditor::selectWord, QKeySequence(Qt::CTRL | Qt::Key_W));
+    selectMenu->addAction(tr("Select Line"), this, &AdvancedCodeEditor::selectLine, QKeySequence(Qt::CTRL | Qt::Key_L));
+    
+    // Whitespace
+    QMenu *wsMenu = menu->addMenu(tr("⬜ Whitespace"));
+    wsMenu->addAction(tr("Trim Trailing Whitespace"), this, &AdvancedCodeEditor::trimTrailingWhitespace);
+    wsMenu->addAction(tr("Convert Tabs to Spaces"), this, &AdvancedCodeEditor::convertTabsToSpaces);
+    wsMenu->addAction(tr("Convert Spaces to Tabs"), this, &AdvancedCodeEditor::convertSpacesToTabs);
+    
+    // Bookmarks
+    QMenu *bookmarkMenu = menu->addMenu(tr("🔖 Bookmarks"));
+    bookmarkMenu->addAction(tr("Toggle Bookmark"), this, [this]() { toggleBookmark(); }, QKeySequence(Qt::CTRL | Qt::Key_M));
+    bookmarkMenu->addAction(tr("Next Bookmark"), this, &AdvancedCodeEditor::nextBookmark, QKeySequence(Qt::Key_F2));
+    bookmarkMenu->addAction(tr("Previous Bookmark"), this, &AdvancedCodeEditor::previousBookmark, QKeySequence(Qt::SHIFT | Qt::Key_F2));
+    bookmarkMenu->addSeparator();
+    bookmarkMenu->addAction(tr("Clear All Bookmarks"), this, &AdvancedCodeEditor::clearBookmarks);
     
     // Folding
     if (!m_FoldRanges.isEmpty()) {
@@ -1312,6 +1360,14 @@ void CodeEditorSidebar::paintEvent(QPaintEvent *event)
         if (block.isVisible() && bottom >= event->rect().top()) {
             QString number = QString::number(blockNumber + 1);
             
+            // Draw bookmark indicator
+            if (m_Editor->hasBookmark(blockNumber)) {
+                painter.setBrush(QColor(0, 122, 204));
+                painter.setPen(Qt::NoPen);
+                int bmY = top + (m_Editor->fontMetrics().height() - 8) / 2;
+                painter.drawEllipse(2, bmY, 8, 8);
+            }
+            
             // Line number color
             if (blockNumber == currentLine) {
                 painter.setPen(m_Editor->palette().color(QPalette::Text));
@@ -1326,7 +1382,7 @@ void CodeEditorSidebar::paintEvent(QPaintEvent *event)
             
             // Draw line number
             int numberWidth = width() - SIDEBAR_FOLD_WIDTH - 5;
-            painter.drawText(0, top, numberWidth, m_Editor->fontMetrics().height(),
+            painter.drawText(12, top, numberWidth - 12, m_Editor->fontMetrics().height(),
                            Qt::AlignRight | Qt::AlignVCenter, number);
             
             // Draw fold indicator
@@ -1335,6 +1391,7 @@ void CodeEditorSidebar::paintEvent(QPaintEvent *event)
                 int foldY = top + (m_Editor->fontMetrics().height() - 10) / 2;
                 
                 painter.setPen(m_Editor->palette().color(QPalette::Text));
+                painter.setBrush(Qt::NoBrush);
                 painter.drawRect(foldX, foldY, 10, 10);
                 
                 // Draw +/- 
@@ -1476,4 +1533,662 @@ void CodeEditorMinimap::navigateToPosition(int y)
     int line = (y * totalLines) / height();
     line = qBound(0, line, totalLines - 1);
     m_Editor->gotoLine(line + 1);
+}
+
+// === New Editor Functions ===
+
+bool AdvancedCodeEditor::saveAs(const QString &path)
+{
+    QString oldPath = m_FilePath;
+    m_FilePath = path;
+    if (!save()) {
+        m_FilePath = oldPath;
+        return false;
+    }
+    return true;
+}
+
+void AdvancedCodeEditor::reload()
+{
+    if (m_FilePath.isEmpty()) return;
+    
+    int currentLine = textCursor().blockNumber();
+    int currentCol = textCursor().columnNumber();
+    
+    QFile file(m_FilePath);
+    if (file.open(QFile::ReadOnly)) {
+        QByteArray rawData = file.readAll();
+        file.close();
+        setPlainText(QString::fromUtf8(rawData));
+        document()->setModified(false);
+        
+        // Restore cursor position
+        QTextCursor cursor(document()->findBlockByLineNumber(currentLine));
+        cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 
+                           qMin(currentCol, cursor.block().text().length()));
+        setTextCursor(cursor);
+    }
+}
+
+void AdvancedCodeEditor::gotoColumn(int col)
+{
+    QTextCursor cursor = textCursor();
+    cursor.movePosition(QTextCursor::StartOfLine);
+    cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 
+                       qMin(col - 1, cursor.block().text().length()));
+    setTextCursor(cursor);
+}
+
+void AdvancedCodeEditor::deleteWord()
+{
+    QTextCursor cursor = textCursor();
+    cursor.select(QTextCursor::WordUnderCursor);
+    cursor.removeSelectedText();
+}
+
+void AdvancedCodeEditor::selectWord()
+{
+    QTextCursor cursor = textCursor();
+    cursor.select(QTextCursor::WordUnderCursor);
+    setTextCursor(cursor);
+}
+
+void AdvancedCodeEditor::selectLine()
+{
+    QTextCursor cursor = textCursor();
+    cursor.movePosition(QTextCursor::StartOfBlock);
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    setTextCursor(cursor);
+}
+
+void AdvancedCodeEditor::joinLines()
+{
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
+    
+    if (cursor.hasSelection()) {
+        int start = cursor.selectionStart();
+        int end = cursor.selectionEnd();
+        cursor.setPosition(start);
+        cursor.setPosition(end, QTextCursor::KeepAnchor);
+        QString text = cursor.selectedText();
+        text.replace(QChar::ParagraphSeparator, ' ');
+        text.replace('\n', ' ');
+        // Remove multiple spaces
+        while (text.contains("  ")) {
+            text.replace("  ", " ");
+        }
+        cursor.insertText(text);
+    } else {
+        cursor.movePosition(QTextCursor::EndOfBlock);
+        cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        if (!cursor.atEnd()) {
+            cursor.insertText(" ");
+        }
+    }
+    
+    cursor.endEditBlock();
+}
+
+void AdvancedCodeEditor::sortLines()
+{
+    QTextCursor cursor = textCursor();
+    if (!cursor.hasSelection()) {
+        selectAll();
+        cursor = textCursor();
+    }
+    
+    int start = cursor.selectionStart();
+    int end = cursor.selectionEnd();
+    
+    cursor.setPosition(start);
+    cursor.movePosition(QTextCursor::StartOfBlock);
+    cursor.setPosition(end, QTextCursor::KeepAnchor);
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    
+    QString text = cursor.selectedText();
+    text.replace(QChar::ParagraphSeparator, '\n');
+    QStringList lines = text.split('\n');
+    lines.sort(Qt::CaseInsensitive);
+    
+    cursor.beginEditBlock();
+    cursor.insertText(lines.join('\n'));
+    cursor.endEditBlock();
+}
+
+void AdvancedCodeEditor::removeDuplicateLines()
+{
+    QTextCursor cursor = textCursor();
+    if (!cursor.hasSelection()) {
+        selectAll();
+        cursor = textCursor();
+    }
+    
+    QString text = cursor.selectedText();
+    text.replace(QChar::ParagraphSeparator, '\n');
+    QStringList lines = text.split('\n');
+    
+    QStringList unique;
+    QSet<QString> seen;
+    for (const QString &line : lines) {
+        if (!seen.contains(line)) {
+            unique << line;
+            seen.insert(line);
+        }
+    }
+    
+    cursor.beginEditBlock();
+    cursor.insertText(unique.join('\n'));
+    cursor.endEditBlock();
+}
+
+void AdvancedCodeEditor::convertTabsToSpaces()
+{
+    QString text = toPlainText();
+    text.replace('\t', QString(TAB_SIZE, ' '));
+    
+    QTextCursor cursor = textCursor();
+    int pos = cursor.position();
+    
+    cursor.beginEditBlock();
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(text);
+    cursor.endEditBlock();
+    
+    cursor.setPosition(qMin(pos, text.length()));
+    setTextCursor(cursor);
+}
+
+void AdvancedCodeEditor::convertSpacesToTabs()
+{
+    QString text = toPlainText();
+    text.replace(QString(TAB_SIZE, ' '), "\t");
+    
+    QTextCursor cursor = textCursor();
+    int pos = cursor.position();
+    
+    cursor.beginEditBlock();
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(text);
+    cursor.endEditBlock();
+    
+    cursor.setPosition(qMin(pos, text.length()));
+    setTextCursor(cursor);
+}
+
+void AdvancedCodeEditor::trimTrailingWhitespace()
+{
+    QString text = toPlainText();
+    QStringList lines = text.split('\n');
+    
+    for (int i = 0; i < lines.size(); ++i) {
+        lines[i] = lines[i].trimmed();
+    }
+    
+    QTextCursor cursor = textCursor();
+    int pos = cursor.position();
+    
+    cursor.beginEditBlock();
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(lines.join('\n'));
+    cursor.endEditBlock();
+    
+    cursor.setPosition(qMin(pos, document()->characterCount() - 1));
+    setTextCursor(cursor);
+}
+
+void AdvancedCodeEditor::insertSnippet(const QString &snippet)
+{
+    QTextCursor cursor = textCursor();
+    
+    // Replace ${1}, ${2}, etc. with placeholders
+    QString processed = snippet;
+    processed.replace("${cursor}", "");
+    
+    cursor.insertText(processed);
+    
+    // Find cursor placeholder position
+    int cursorPos = snippet.indexOf("${cursor}");
+    if (cursorPos >= 0) {
+        cursor.setPosition(cursor.position() - (snippet.length() - cursorPos));
+        setTextCursor(cursor);
+    }
+}
+
+int AdvancedCodeEditor::findText(const QString &text, bool caseSensitive, bool wholeWord, bool regex)
+{
+    m_LastSearchText = text;
+    m_LastSearchCaseSensitive = caseSensitive;
+    m_LastSearchWholeWord = wholeWord;
+    m_LastSearchRegex = regex;
+    
+    if (text.isEmpty()) {
+        m_SearchSelections.clear();
+        highlightCurrentLine();
+        return 0;
+    }
+    
+    m_SearchSelections.clear();
+    QTextDocument *doc = document();
+    QTextCursor cursor(doc);
+    
+    QTextDocument::FindFlags flags;
+    if (caseSensitive) flags |= QTextDocument::FindCaseSensitively;
+    if (wholeWord) flags |= QTextDocument::FindWholeWords;
+    
+    int count = 0;
+    
+    if (regex) {
+        QRegularExpression re(text, caseSensitive ? QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption);
+        cursor = doc->find(re, 0, flags);
+        while (!cursor.isNull()) {
+            QTextEdit::ExtraSelection sel;
+            sel.format.setBackground(QColor(255, 255, 0, 100));
+            sel.cursor = cursor;
+            m_SearchSelections << sel;
+            count++;
+            cursor = doc->find(re, cursor, flags);
+        }
+    } else {
+        cursor = doc->find(text, 0, flags);
+        while (!cursor.isNull()) {
+            QTextEdit::ExtraSelection sel;
+            sel.format.setBackground(QColor(255, 255, 0, 100));
+            sel.cursor = cursor;
+            m_SearchSelections << sel;
+            count++;
+            cursor = doc->find(text, cursor, flags);
+        }
+    }
+    
+    highlightSearchResults();
+    
+    // Move to first match
+    if (count > 0) {
+        findNext();
+    }
+    
+    return count;
+}
+
+int AdvancedCodeEditor::replaceText(const QString &find, const QString &replace, bool all)
+{
+    if (find.isEmpty()) return 0;
+    
+    QTextCursor cursor = textCursor();
+    int count = 0;
+    
+    if (all) {
+        cursor.beginEditBlock();
+        cursor.movePosition(QTextCursor::Start);
+        setTextCursor(cursor);
+        
+        while (textCursor().hasSelection() || find != replace) {
+            QTextDocument::FindFlags flags;
+            if (m_LastSearchCaseSensitive) flags |= QTextDocument::FindCaseSensitively;
+            if (m_LastSearchWholeWord) flags |= QTextDocument::FindWholeWords;
+            
+            if (!QPlainTextEdit::find(find, flags)) break;
+            
+            QTextCursor c = textCursor();
+            c.insertText(replace);
+            count++;
+        }
+        
+        cursor.endEditBlock();
+    } else {
+        if (cursor.hasSelection() && cursor.selectedText() == find) {
+            cursor.insertText(replace);
+            count = 1;
+        }
+        findNext();
+    }
+    
+    // Refresh search highlights
+    if (!m_LastSearchText.isEmpty()) {
+        findText(m_LastSearchText, m_LastSearchCaseSensitive, m_LastSearchWholeWord, m_LastSearchRegex);
+    }
+    
+    return count;
+}
+
+void AdvancedCodeEditor::findNext()
+{
+    if (m_LastSearchText.isEmpty()) return;
+    
+    QTextDocument::FindFlags flags;
+    if (m_LastSearchCaseSensitive) flags |= QTextDocument::FindCaseSensitively;
+    if (m_LastSearchWholeWord) flags |= QTextDocument::FindWholeWords;
+    
+    bool found;
+    if (m_LastSearchRegex) {
+        QRegularExpression re(m_LastSearchText, m_LastSearchCaseSensitive ? 
+            QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption);
+        found = QPlainTextEdit::find(re, flags);
+    } else {
+        found = QPlainTextEdit::find(m_LastSearchText, flags);
+    }
+    
+    if (!found) {
+        // Wrap around
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::Start);
+        setTextCursor(cursor);
+        
+        if (m_LastSearchRegex) {
+            QRegularExpression re(m_LastSearchText, m_LastSearchCaseSensitive ? 
+                QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption);
+            QPlainTextEdit::find(re, flags);
+        } else {
+            QPlainTextEdit::find(m_LastSearchText, flags);
+        }
+    }
+}
+
+void AdvancedCodeEditor::findPrevious()
+{
+    if (m_LastSearchText.isEmpty()) return;
+    
+    QTextDocument::FindFlags flags = QTextDocument::FindBackward;
+    if (m_LastSearchCaseSensitive) flags |= QTextDocument::FindCaseSensitively;
+    if (m_LastSearchWholeWord) flags |= QTextDocument::FindWholeWords;
+    
+    bool found;
+    if (m_LastSearchRegex) {
+        QRegularExpression re(m_LastSearchText, m_LastSearchCaseSensitive ? 
+            QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption);
+        found = QPlainTextEdit::find(re, flags);
+    } else {
+        found = QPlainTextEdit::find(m_LastSearchText, flags);
+    }
+    
+    if (!found) {
+        // Wrap around
+        QTextCursor cursor = textCursor();
+        cursor.movePosition(QTextCursor::End);
+        setTextCursor(cursor);
+        
+        if (m_LastSearchRegex) {
+            QRegularExpression re(m_LastSearchText, m_LastSearchCaseSensitive ? 
+                QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption);
+            QPlainTextEdit::find(re, flags);
+        } else {
+            QPlainTextEdit::find(m_LastSearchText, flags);
+        }
+    }
+}
+
+QStringList AdvancedCodeEditor::getSymbols()
+{
+    return m_Symbols;
+}
+
+void AdvancedCodeEditor::gotoSymbol(const QString &symbol)
+{
+    // Search for the symbol in the document
+    QTextDocument *doc = document();
+    QTextCursor cursor = doc->find(symbol, 0);
+    if (!cursor.isNull()) {
+        setTextCursor(cursor);
+        centerCursor();
+    }
+}
+
+void AdvancedCodeEditor::extractSymbols()
+{
+    m_Symbols.clear();
+    QString content = toPlainText();
+    
+    if (m_FileType == "smali") {
+        // Extract method names
+        QRegularExpression methodRe("\\.method[^\\n]+ (\\w+)\\(");
+        auto it = methodRe.globalMatch(content);
+        while (it.hasNext()) {
+            QRegularExpressionMatch match = it.next();
+            m_Symbols << match.captured(1);
+        }
+        // Extract field names
+        QRegularExpression fieldRe("\\.field[^\\n]+ (\\w+):");
+        it = fieldRe.globalMatch(content);
+        while (it.hasNext()) {
+            QRegularExpressionMatch match = it.next();
+            m_Symbols << match.captured(1);
+        }
+    } else if (m_FileType == "java" || m_FileType == "kotlin") {
+        // Extract class/method/field names
+        QRegularExpression classRe("(class|interface|enum)\\s+(\\w+)");
+        auto it = classRe.globalMatch(content);
+        while (it.hasNext()) {
+            QRegularExpressionMatch match = it.next();
+            m_Symbols << match.captured(2);
+        }
+        QRegularExpression methodRe("(public|private|protected)?\\s*(static)?\\s*\\w+\\s+(\\w+)\\s*\\(");
+        it = methodRe.globalMatch(content);
+        while (it.hasNext()) {
+            QRegularExpressionMatch match = it.next();
+            m_Symbols << match.captured(3);
+        }
+    } else if (m_FileType == "dart") {
+        // Extract class/method names
+        QRegularExpression classRe("class\\s+(\\w+)");
+        auto it = classRe.globalMatch(content);
+        while (it.hasNext()) {
+            QRegularExpressionMatch match = it.next();
+            m_Symbols << match.captured(1);
+        }
+        QRegularExpression funcRe("(\\w+)\\s+\\w+\\s*\\(");
+        it = funcRe.globalMatch(content);
+        while (it.hasNext()) {
+            QRegularExpressionMatch match = it.next();
+            m_Symbols << match.captured(1);
+        }
+    } else if (m_FileType == "xml" || m_FileType == "android-manifest") {
+        // Extract android:id values
+        QRegularExpression idRe("android:id=\"@\\+id/(\\w+)\"");
+        auto it = idRe.globalMatch(content);
+        while (it.hasNext()) {
+            QRegularExpressionMatch match = it.next();
+            m_Symbols << match.captured(1);
+        }
+    }
+    
+    m_Symbols.removeDuplicates();
+    m_Symbols.sort();
+    emit symbolsChanged(m_Symbols);
+}
+
+void AdvancedCodeEditor::toggleBookmark(int line)
+{
+    if (line < 0) {
+        line = textCursor().blockNumber();
+    }
+    
+    if (m_Bookmarks.contains(line)) {
+        m_Bookmarks.remove(line);
+    } else {
+        m_Bookmarks.insert(line);
+    }
+    
+    m_Sidebar->update();
+}
+
+void AdvancedCodeEditor::nextBookmark()
+{
+    if (m_Bookmarks.isEmpty()) return;
+    
+    int currentLine = textCursor().blockNumber();
+    QList<int> bookmarks = m_Bookmarks.values();
+    std::sort(bookmarks.begin(), bookmarks.end());
+    
+    for (int line : bookmarks) {
+        if (line > currentLine) {
+            gotoLine(line + 1);
+            return;
+        }
+    }
+    
+    // Wrap to first bookmark
+    gotoLine(bookmarks.first() + 1);
+}
+
+void AdvancedCodeEditor::previousBookmark()
+{
+    if (m_Bookmarks.isEmpty()) return;
+    
+    int currentLine = textCursor().blockNumber();
+    QList<int> bookmarks = m_Bookmarks.values();
+    std::sort(bookmarks.begin(), bookmarks.end());
+    
+    for (int i = bookmarks.size() - 1; i >= 0; --i) {
+        if (bookmarks[i] < currentLine) {
+            gotoLine(bookmarks[i] + 1);
+            return;
+        }
+    }
+    
+    // Wrap to last bookmark
+    gotoLine(bookmarks.last() + 1);
+}
+
+void AdvancedCodeEditor::clearBookmarks()
+{
+    m_Bookmarks.clear();
+    m_Sidebar->update();
+}
+
+int AdvancedCodeEditor::wordCount() const
+{
+    QString text = toPlainText();
+    if (text.isEmpty()) return 0;
+    
+    // Split by whitespace and count non-empty parts
+    QStringList words = text.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    return words.count();
+}
+
+int AdvancedCodeEditor::charCount() const
+{
+    return toPlainText().length();
+}
+
+void AdvancedCodeEditor::highlightSearchResults()
+{
+    QList<QTextEdit::ExtraSelection> selections;
+    
+    // Current line highlight
+    if (!isReadOnly()) {
+        QTextEdit::ExtraSelection selection;
+        QColor highlight = palette().color(QPalette::Highlight);
+        highlight.setAlpha(30);
+        selection.format.setBackground(highlight);
+        selection.format.setProperty(QTextCharFormat::FullWidthSelection, true);
+        selection.cursor = textCursor();
+        selection.cursor.clearSelection();
+        selections.append(selection);
+    }
+    
+    // Bracket matches
+    selections.append(m_BracketSelections);
+    
+    // Search results
+    selections.append(m_SearchSelections);
+    
+    setExtraSelections(selections);
+}
+
+QString AdvancedCodeEditor::formatHtml(const QString &code)
+{
+    // Basic HTML formatting - indent properly
+    QString result;
+    int indent = 0;
+    QStringList lines = code.split('\n');
+    
+    for (const QString &line : lines) {
+        QString trimmed = line.trimmed();
+        if (trimmed.isEmpty()) {
+            result += "\n";
+            continue;
+        }
+        
+        // Check for closing tags
+        if (trimmed.startsWith("</")) {
+            indent = qMax(0, indent - 1);
+        }
+        
+        result += QString(indent * 2, ' ') + trimmed + "\n";
+        
+        // Check for opening tags (not self-closing)
+        if (trimmed.startsWith("<") && !trimmed.startsWith("</") && 
+            !trimmed.endsWith("/>") && !trimmed.startsWith("<!") && !trimmed.startsWith("<?")) {
+            indent++;
+        }
+    }
+    
+    return result;
+}
+
+QString AdvancedCodeEditor::formatCss(const QString &code)
+{
+    // Basic CSS formatting
+    QString result;
+    int indent = 0;
+    QString current;
+    
+    for (int i = 0; i < code.length(); ++i) {
+        QChar c = code[i];
+        
+        if (c == '{') {
+            result += current.trimmed() + " {\n";
+            current.clear();
+            indent++;
+        } else if (c == '}') {
+            if (!current.trimmed().isEmpty()) {
+                result += QString(indent * 2, ' ') + current.trimmed() + "\n";
+            }
+            current.clear();
+            indent = qMax(0, indent - 1);
+            result += QString(indent * 2, ' ') + "}\n\n";
+        } else if (c == ';') {
+            result += QString(indent * 2, ' ') + current.trimmed() + ";\n";
+            current.clear();
+        } else if (c != '\n' && c != '\r') {
+            current += c;
+        }
+    }
+    
+    return result;
+}
+
+QString AdvancedCodeEditor::formatProperties(const QString &code)
+{
+    // Simple properties file formatting - sort keys
+    QStringList lines = code.split('\n');
+    QStringList properties;
+    QStringList comments;
+    
+    for (const QString &line : lines) {
+        QString trimmed = line.trimmed();
+        if (trimmed.isEmpty()) continue;
+        
+        if (trimmed.startsWith('#') || trimmed.startsWith('!')) {
+            comments << trimmed;
+        } else {
+            properties << trimmed;
+        }
+    }
+    
+    properties.sort(Qt::CaseInsensitive);
+    
+    QString result;
+    for (const QString &comment : comments) {
+        result += comment + "\n";
+    }
+    if (!comments.isEmpty() && !properties.isEmpty()) {
+        result += "\n";
+    }
+    for (const QString &prop : properties) {
+        result += prop + "\n";
+    }
+    
+    return result;
 }
