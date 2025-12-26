@@ -173,9 +173,14 @@ void MainWindow::analyzeProjectContext(const QString &path) {
 
     updateStatusBar(tr("AI Analyzing Environment..."));
 
+    // 1. Detección de Motor
     GameEngineDetector::Engine engine = GameEngineDetector::detectEngine(path);
     m_DetectedContext = GameEngineDetector::engineName(engine);
     
+    // 2. Inyectar Widgets Reales en el Sidebar (Reemplaza los labels iniciales)
+    auto gameModStudio = new GameModStudio(path);
+    m_SidebarStack->insertWidget(GameModding, gameModStudio);
+
     m_SecurityHub = new SecurityHub(path);
     m_SidebarStack->insertWidget(Security, m_SecurityHub);
     
@@ -185,6 +190,7 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     m_AppModStudio = new AppModStudio(path);
     m_SidebarStack->insertWidget(AppMod, m_AppModStudio);
 
+    // 3. Actualizar Explorador
     m_ExplorerTree->clear();
     auto root = new QTreeWidgetItem(m_ExplorerTree);
     root->setText(0, QFileInfo(path).fileName());
