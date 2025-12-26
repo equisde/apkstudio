@@ -23,6 +23,7 @@ SettingsDialog::SettingsDialog(const int page, QWidget *parent)
 QWidget *SettingsDialog::buildButtonBox()
 {
     m_ButtonBox = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, this);
+    connect(m_ButtonBox, &QDialogButtonBox::accepted, m_AISettingsWidget, &AISettingsWidget::save);
     connect(m_ButtonBox, &QDialogButtonBox::accepted, m_AppearanceSettingsWidget, &AppearanceSettingsWidget::save);
     connect(m_ButtonBox, &QDialogButtonBox::accepted, m_BinarySettingsWidget, &BinarySettingsWidget::save);
     connect(m_ButtonBox, &QDialogButtonBox::accepted, m_SigningConfigWidget, &SigningConfigWidget::save);
@@ -38,11 +39,13 @@ QLayout *SettingsDialog::buildForm()
     m_OptionsList->addItem(new QListWidgetItem(QIcon(":/icons/fugue/color.png"), tr("Appearance")));
     m_OptionsList->addItem(new QListWidgetItem(QIcon(":/icons/fugue/application-terminal.png"), tr("Binaries")));
     m_OptionsList->addItem(new QListWidgetItem(QIcon(":/icons/fugue/edit-signiture.png"), tr("Signing")));
+    m_OptionsList->addItem(new QListWidgetItem(QIcon(":/icons/fugue/robot.png"), tr("AI Assistant")));
     m_OptionsList->setCurrentRow(0);
     layout->addWidget(m_WidgetStack = new QStackedWidget(this), 3);
     m_WidgetStack->addWidget(m_AppearanceSettingsWidget = new AppearanceSettingsWidget(this));
     m_WidgetStack->addWidget(m_BinarySettingsWidget = new BinarySettingsWidget(this));
     m_WidgetStack->addWidget(m_SigningConfigWidget = new SigningConfigWidget(this));
+    m_WidgetStack->addWidget(m_AISettingsWidget = new AISettingsWidget(this));
     connect(m_OptionsList, &QListWidget::currentRowChanged, m_WidgetStack, &QStackedWidget::setCurrentIndex);
     return layout;
 }

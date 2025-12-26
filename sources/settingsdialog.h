@@ -6,6 +6,7 @@
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QWidget>
+#include "aisettingswidget.h"
 #include "appearancesettingswidget.h"
 #include "binarysettingswidget.h"
 #include "signingconfigwidget.h"
@@ -16,6 +17,7 @@ class SettingsDialog : public QDialog
 public:
     explicit SettingsDialog(const int page = 0, QWidget *parent = nullptr);
 private:
+    AISettingsWidget *m_AISettingsWidget;
     AppearanceSettingsWidget *m_AppearanceSettingsWidget;
     BinarySettingsWidget *m_BinarySettingsWidget;
     SigningConfigWidget *m_SigningConfigWidget;

@@ -29,6 +29,10 @@ Open-source, cross platform [Qt6](https://www.qt.io/) based IDE for reverse-engi
 
 - Cross platform, run on **Linux**, **Mac OS X** & **Windows**
 - Decompile/recompile/sign & install APKs
+- **🤖 AI Assistant** - Integrated AI-powered analysis using Google Gemini, OpenAI, GitHub Copilot, or Anthropic Claude
+  - Automatic project analysis on open (permissions, security, code structure)
+  - Interactive chat to ask questions about the APK
+  - Analysis reports saved as markdown files
 - **AntiSplit** - Merge split APKs (base.apk + config.\*.apk) or XAPK/APKS/APKM files into a single universal APK
 - **Automatic tool download & installation** - APK Studio can automatically download and install required tools (Java, Apktool, JADX, ADB, Uber APK Signer)
 - **Framework support** - Install and use manufacturer-specific framework files (e.g., HTC, LG, Samsung) with optional tagging for decompiling and recompiling APKs
@@ -39,6 +43,7 @@ Open-source, cross platform [Qt6](https://www.qt.io/) based IDE for reverse-engi
 - Built-in viewer for image (\*.gif; \*.jpg; \*.jpeg; \*.png) files
 - Built-in hex editor for binary files
 - **Dark/Light theme support** - Native Qt 6 theming with system integration
+- **Modern minimalist UI** - Clean, professional interface
 
 ### Downloads
 

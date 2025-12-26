@@ -68,6 +68,8 @@ set_target_properties(QHexView PROPERTIES
 set(SOURCES
     sources/main.cpp
     sources/adbinstallworker.cpp
+    sources/aiconsolewidget.cpp
+    sources/aisettingswidget.cpp
     sources/antisplitdialog.cpp
     sources/antisplitworker.cpp
     sources/apkdecompiledialog.cpp
@@ -97,6 +99,8 @@ set(SOURCES
 
 set(HEADERS
     sources/adbinstallworker.h
+    sources/aiconsolewidget.h
+    sources/aisettingswidget.h
     sources/antisplitdialog.h
     sources/antisplitworker.h
     sources/apkdecompiledialog.h

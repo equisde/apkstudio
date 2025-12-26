@@ -16,6 +16,7 @@
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+#include "aiconsolewidget.h"
 #include "findreplacedialog.h"
 #include "processutils.h"
 
@@ -55,11 +56,14 @@ private:
     QAction *m_ActionViewProject;
     QAction *m_ActionViewFiles;
     QAction *m_ActionViewConsole;
+    QAction *m_ActionViewAI;
     QAction *m_ActionViewToolBar;
     QStackedWidget *m_CentralStack;
     QDockWidget *m_DockProject;
     QDockWidget *m_DockFiles;
     QDockWidget *m_DockConsole;
+    QDockWidget *m_DockAI;
+    AIConsoleWidget *m_AIConsole;
     QTextEdit *m_EditConsole;
     QList<QMetaObject::Connection> m_EditorConnections;
     QFileIconProvider m_FileIconProvider;
@@ -77,6 +81,7 @@ private:
     QTabWidget *m_TabEditors;
     QWidget *buildCentralWidget();
     QDockWidget *buildConsoleDock();
+    QDockWidget *buildAIDock();
     QDockWidget *buildFilesDock();
     QToolBar *buildMainToolBar();
     QMenuBar *buildMenuBar();
@@ -135,6 +140,7 @@ private slots:
     void handleTreeContextMenu(const QPoint &point);
     void handleTreeDoubleClicked(const QModelIndex &index);
     void handleTreeSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected);
+    void handleAIAnalysisComplete(const QString &analysisPath);
     void openFile(const QString &file);
     void openFindReplaceDialog(QPlainTextEdit *edit, const bool replace);
     void openProject(const QString &folder, const bool last = false);

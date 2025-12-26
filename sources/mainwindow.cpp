@@ -67,6 +67,7 @@ MainWindow::MainWindow(const QMap<QString, QString> &versions, QWidget *parent)
     addDockWidget(Qt::LeftDockWidgetArea, m_DockProject = buildProjectsDock());
     addDockWidget(Qt::LeftDockWidgetArea, m_DockFiles = buildFilesDock());
     addDockWidget(Qt::BottomDockWidgetArea, m_DockConsole = buildConsoleDock());
+    addDockWidget(Qt::RightDockWidgetArea, m_DockAI = buildAIDock());
     addToolBar(Qt::LeftToolBarArea, m_MainToolBar = buildMainToolBar());
     // Install event filter to sync menu action when toolbar is hidden/shown via context menu
     m_MainToolBar->installEventFilter(this);
@@ -181,19 +182,21 @@ QDockWidget *MainWindow::buildConsoleDock()
     auto dock = new QDockWidget(tr("Console"), this);
     QFont font;
 #ifdef Q_OS_WIN
-    font.setFamily("Courier New");
+    font.setFamily("Cascadia Code");
 #elif defined(Q_OS_MACOS)
-    font.setFamily("Monaco");
+    font.setFamily("SF Mono");
 #else
-    font.setFamily("Ubuntu Mono");
+    font.setFamily("JetBrains Mono");
 #endif
     font.setFixedPitch(true);
     font.setPointSize(10);
     font.setStyleHint(QFont::Monospace);
     QFontMetrics metrics(font);
     QPalette palette;
-    palette.setColor(QPalette::Active, QPalette::Base, QColor("#000000"));
-    palette.setColor(QPalette::Inactive, QPalette::Base, QColor("#111111"));
+    palette.setColor(QPalette::Active, QPalette::Base, QColor("#1a1a2e"));
+    palette.setColor(QPalette::Inactive, QPalette::Base, QColor("#16213e"));
+    palette.setColor(QPalette::Active, QPalette::Text, QColor("#e8e8e8"));
+    palette.setColor(QPalette::Inactive, QPalette::Text, QColor("#c8c8c8"));
     m_EditConsole = new QTextEdit(this);
     m_EditConsole->setFont(font);
     m_EditConsole->setFrameStyle(QFrame::NoFrame);
@@ -206,6 +209,17 @@ QDockWidget *MainWindow::buildConsoleDock()
     setContentsMargins(2, 2, 2, 2);
     dock->setObjectName("ConsoleDock");
     dock->setWidget(m_EditConsole);
+    return dock;
+}
+
+QDockWidget *MainWindow::buildAIDock()
+{
+    auto dock = new QDockWidget(tr("AI Assistant"), this);
+    m_AIConsole = new AIConsoleWidget(this);
+    connect(m_AIConsole, &AIConsoleWidget::analysisComplete, this, &MainWindow::handleAIAnalysisComplete);
+    dock->setObjectName("AIDock");
+    dock->setWidget(m_AIConsole);
+    dock->setMinimumWidth(350);
     return dock;
 }
 
@@ -333,6 +347,14 @@ QMenuBar *MainWindow::buildMenuBar()
     connect(m_DockConsole, &QDockWidget::visibilityChanged, [this](bool isVisible) {
         if (!(windowState() & Qt::WindowMinimized)) {
             m_ActionViewConsole->setChecked(isVisible);
+        }
+    });
+    m_ActionViewAI = view->addAction(tr("AI Assistant"));
+    m_ActionViewAI->setCheckable(true);
+    connect(m_ActionViewAI, &QAction::toggled, m_DockAI, &QDockWidget::setVisible);
+    connect(m_DockAI, &QDockWidget::visibilityChanged, [this](bool isVisible) {
+        if (!(windowState() & Qt::WindowMinimized)) {
+            m_ActionViewAI->setChecked(isVisible);
         }
     });
     view->addSeparator();
@@ -990,6 +1012,17 @@ void MainWindow::handleAntiSplitProgress(const int percent, const QString &messa
     m_ProgressDialog->setValue(percent);
 }
 
+void MainWindow::handleAIAnalysisComplete(const QString &analysisPath)
+{
+    // Refresh project tree to show new analysis file
+    if (m_ProjectsTree->topLevelItemCount() > 0) {
+        reloadChildren(m_ProjectsTree->topLevelItem(0));
+    }
+    // Open the analysis file
+    openFile(analysisPath);
+    m_StatusMessage->setText(tr("AI analysis complete."));
+}
+
 void MainWindow::handleFilesSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected)
 {
     Q_UNUSED(deselected)
@@ -1497,6 +1530,11 @@ void MainWindow::openProject(const QString &folder, const bool last)
         if (QFile::exists(manifest)) {
             openFile(manifest);
         }
+    }
+    
+    // Set project path for AI analysis
+    if (m_AIConsole) {
+        m_AIConsole->setProjectPath(folder);
     }
 }
 
