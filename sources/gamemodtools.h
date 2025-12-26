@@ -1,6 +1,7 @@
 #ifndef GAMEMODTOOLS_H
 #define GAMEMODTOOLS_H
 
+#include <functional>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
@@ -365,18 +366,17 @@ public:
     
     static QList<Tool> getRequiredTools(GameEngineDetector::Engine engine);
     static bool isToolInstalled(const QString &toolPath);
+    static QString getToolsDirectory();
+    static QString getToolExecutable(const QString &toolName);
+    static void downloadTool(const Tool &tool, QWidget *parent, std::function<void(bool, const QString&)> callback = nullptr);
+    static void downloadAllTools(GameEngineDetector::Engine engine, QWidget *parent, 
+                                  std::function<void(int, int)> progressCallback = nullptr,
+                                  std::function<void(bool)> completionCallback = nullptr);
     
 signals:
     void downloadProgress(int percent);
     void downloadComplete(const QString &toolName);
     void downloadError(const QString &error);
-    
-public slots:
-    void downloadTool(const Tool &tool);
-    void downloadAllTools(GameEngineDetector::Engine engine);
-    
-private:
-    QNetworkAccessManager *m_NetworkManager;
 };
 
 // AI Game Mod Assistant
@@ -401,6 +401,7 @@ public:
 private slots:
     void detectEngine();
     void downloadTools();
+    void runDumper();
     void analyzeWithAI();
     void applyMod();
     void generatePatch();
@@ -433,6 +434,7 @@ private:
     QTextBrowser *m_AIResponseView;
     QPushButton *m_AnalyzeBtn;
     QPushButton *m_ApplyBtn;
+    QPushButton *m_RunDumperBtn;
     QLineEdit *m_SearchInput;
     QComboBox *m_ModTypeCombo;
 };

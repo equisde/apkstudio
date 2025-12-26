@@ -25,6 +25,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSplitter>
+#include <QStandardPaths>
 #include <QTabWidget>
 #include <QTextStream>
 #include <QToolBar>
@@ -1394,11 +1395,141 @@ QList<GameModToolDownloader::Tool> GameModToolDownloader::getRequiredTools(GameE
 }
 
 bool GameModToolDownloader::isToolInstalled(const QString &toolPath) {
-    return QDir(toolPath).exists();
+    return QDir(toolPath).exists() || QFile::exists(toolPath);
 }
 
-void GameModToolDownloader::downloadTool(const Tool &) {}
-void GameModToolDownloader::downloadAllTools(GameEngineDetector::Engine) {}
+QString GameModToolDownloader::getToolsDirectory() {
+    QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString toolsDir = appData + "/tools";
+    QDir().mkpath(toolsDir);
+    return toolsDir;
+}
+
+void GameModToolDownloader::downloadTool(const Tool &tool, QWidget *parent, std::function<void(bool, const QString&)> callback) {
+    QString toolsDir = getToolsDirectory();
+    QString extractPath = toolsDir + "/" + tool.name;
+    
+    if (isToolInstalled(extractPath)) {
+        if (callback) callback(true, extractPath);
+        return;
+    }
+    
+    QNetworkAccessManager *manager = new QNetworkAccessManager(parent);
+    QNetworkRequest request(QUrl(tool.downloadUrl));
+    request.setHeader(QNetworkRequest::UserAgentHeader, "ApkStudio/1.0");
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    
+    QNetworkReply *reply = manager->get(request);
+    
+    QObject::connect(reply, &QNetworkReply::finished, parent, [=]() {
+        if (reply->error() != QNetworkReply::NoError) {
+            QString error = QString("Download failed: %1").arg(reply->errorString());
+            if (callback) callback(false, error);
+            reply->deleteLater();
+            manager->deleteLater();
+            return;
+        }
+        
+        QByteArray data = reply->readAll();
+        reply->deleteLater();
+        manager->deleteLater();
+        
+        // Save and extract
+        QString zipPath = toolsDir + "/" + tool.name + ".zip";
+        QFile zipFile(zipPath);
+        if (zipFile.open(QIODevice::WriteOnly)) {
+            zipFile.write(data);
+            zipFile.close();
+            
+            // Extract using system tools
+            QDir().mkpath(extractPath);
+            QProcess *unzip = new QProcess(parent);
+            
+#ifdef Q_OS_WIN
+            unzip->setProgram("powershell");
+            unzip->setArguments({"-Command", QString("Expand-Archive -Path '%1' -DestinationPath '%2' -Force").arg(zipPath, extractPath)});
+#else
+            unzip->setProgram("unzip");
+            unzip->setArguments({"-o", zipPath, "-d", extractPath});
+#endif
+            
+            QObject::connect(unzip, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), parent, [=](int exitCode, QProcess::ExitStatus) {
+                QFile::remove(zipPath); // Clean up zip
+                if (exitCode == 0) {
+                    if (callback) callback(true, extractPath);
+                } else {
+                    if (callback) callback(false, "Extraction failed");
+                }
+                unzip->deleteLater();
+            });
+            
+            unzip->start();
+        } else {
+            if (callback) callback(false, "Failed to save download");
+        }
+    });
+}
+
+void GameModToolDownloader::downloadAllTools(GameEngineDetector::Engine engine, QWidget *parent, std::function<void(int, int)> progressCallback, std::function<void(bool)> completionCallback) {
+    QList<Tool> tools = getRequiredTools(engine);
+    
+    if (tools.isEmpty()) {
+        if (completionCallback) completionCallback(true);
+        return;
+    }
+    
+    int *completed = new int(0);
+    int *failed = new int(0);
+    int total = tools.size();
+    
+    for (const Tool &tool : tools) {
+        downloadTool(tool, parent, [=](bool success, const QString&) {
+            (*completed)++;
+            if (!success) (*failed)++;
+            
+            if (progressCallback) progressCallback(*completed, total);
+            
+            if (*completed >= total) {
+                bool allSuccess = (*failed == 0);
+                if (completionCallback) completionCallback(allSuccess);
+                delete completed;
+                delete failed;
+            }
+        });
+    }
+}
+
+QString GameModToolDownloader::getToolExecutable(const QString &toolName) {
+    QString toolsDir = getToolsDirectory();
+    QString toolPath = toolsDir + "/" + toolName;
+    
+    // Find executable in tool directory
+    QDir dir(toolPath);
+    if (!dir.exists()) return QString();
+    
+    QStringList exeFilters;
+#ifdef Q_OS_WIN
+    exeFilters << "*.exe";
+#else
+    exeFilters << "*";
+#endif
+    
+    QStringList exes = dir.entryList(exeFilters, QDir::Files | QDir::Executable);
+    if (!exes.isEmpty()) {
+        return toolPath + "/" + exes.first();
+    }
+    
+    // Check subdirectories
+    for (const QString &subdir : dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        QDir sub(toolPath + "/" + subdir);
+        exes = sub.entryList(exeFilters, QDir::Files | QDir::Executable);
+        if (!exes.isEmpty()) {
+            return toolPath + "/" + subdir + "/" + exes.first();
+        }
+    }
+    
+    return QString();
+}
 
 // ============== AI Game Mod Assistant ==============
 
@@ -1677,6 +1808,11 @@ void AIGameModDialog::setupUI()
     connect(downloadToolsBtn, &QPushButton::clicked, this, &AIGameModDialog::downloadTools);
     buttonLayout->addWidget(downloadToolsBtn);
     
+    m_RunDumperBtn = new QPushButton(tr("🔧 Run Dumper"));
+    m_RunDumperBtn->setToolTip(tr("Run Il2CppDumper for Unity games or equivalent for other engines"));
+    connect(m_RunDumperBtn, &QPushButton::clicked, this, &AIGameModDialog::runDumper);
+    buttonLayout->addWidget(m_RunDumperBtn);
+    
     m_AnalyzeBtn = new QPushButton(tr("🔍 AI Analyze"));
     m_AnalyzeBtn->setStyleSheet("background-color: #238636; color: white; font-weight: bold;");
     connect(m_AnalyzeBtn, &QPushButton::clicked, this, &AIGameModDialog::analyzeWithAI);
@@ -1737,17 +1873,28 @@ void AIGameModDialog::downloadTools()
     m_Progress->setMaximum(tools.size());
     m_Progress->setValue(0);
     
-    for (const auto &tool : tools) {
-        if (GameModToolDownloader::isToolInstalled(tool.extractPath)) {
-            logMessage(tr("✅ %1 already installed").arg(tool.name), "success");
-        } else {
-            logMessage(tr("📥 Downloading %1...").arg(tool.name), "info");
-            // TODO: Implement actual download
-        }
-        m_Progress->setValue(m_Progress->value() + 1);
-    }
+    logMessage(tr("📥 Starting download of %1 tools...").arg(tools.size()), "info");
     
-    m_Progress->setVisible(false);
+    GameModToolDownloader::downloadAllTools(m_DetectedEngine, this,
+        [this](int completed, int total) {
+            m_Progress->setValue(completed);
+            m_Progress->setMaximum(total);
+        },
+        [this, tools](bool success) {
+            m_Progress->setVisible(false);
+            if (success) {
+                logMessage(tr("✅ All tools downloaded successfully!"), "success");
+                for (const auto &tool : tools) {
+                    QString exePath = GameModToolDownloader::getToolExecutable(tool.name);
+                    if (!exePath.isEmpty()) {
+                        logMessage(tr("  • %1: %2").arg(tool.name, exePath), "info");
+                    }
+                }
+            } else {
+                logMessage(tr("⚠️ Some tools failed to download. Check network connection."), "warning");
+            }
+        }
+    );
 }
 
 void AIGameModDialog::analyzeWithAI()
@@ -2078,6 +2225,140 @@ void AIGameModDialog::applyPatch(const QString &file, const QByteArray &find, co
         f.close();
         logMessage(tr("✅ Patched: %1").arg(file), "success");
     }
+}
+
+void AIGameModDialog::runDumper()
+{
+    logMessage(tr("🔧 Starting dumper for %1...").arg(GameEngineDetector::engineName(m_DetectedEngine)), "info");
+    
+    QString toolName;
+    QString libPath;
+    QString metadataPath;
+    
+    switch (m_DetectedEngine) {
+    case GameEngineDetector::Unity:
+        toolName = "Il2CppDumper";
+        
+        // Find libil2cpp.so
+        QStringList libPaths = {
+            m_ProjectPath + "/lib/arm64-v8a/libil2cpp.so",
+            m_ProjectPath + "/lib/armeabi-v7a/libil2cpp.so",
+            m_ProjectPath + "/lib/x86/libil2cpp.so",
+            m_ProjectPath + "/lib/x86_64/libil2cpp.so"
+        };
+        
+        for (const QString &path : libPaths) {
+            if (QFile::exists(path)) {
+                libPath = path;
+                break;
+            }
+        }
+        
+        // Find global-metadata.dat
+        metadataPath = m_ProjectPath + "/assets/bin/Data/Managed/Metadata/global-metadata.dat";
+        if (!QFile::exists(metadataPath)) {
+            metadataPath = m_ProjectPath + "/assets/bin/Data/globalgamemanagers.assets";
+        }
+        break;
+    }
+    
+    if (libPath.isEmpty()) {
+        logMessage(tr("❌ Could not find native library for dumping"), "error");
+        return;
+    }
+    
+    QString exePath = GameModToolDownloader::getToolExecutable(toolName);
+    
+    if (exePath.isEmpty()) {
+        logMessage(tr("❌ %1 not installed. Click 'Download Tools' first.").arg(toolName), "error");
+        
+        QMessageBox::StandardButton reply = QMessageBox::question(this,
+            tr("Tool Not Found"),
+            tr("%1 is required but not installed. Download now?").arg(toolName),
+            QMessageBox::Yes | QMessageBox::No);
+            
+        if (reply == QMessageBox::Yes) {
+            downloadTools();
+        }
+        return;
+    }
+    
+    logMessage(tr("📂 Library: %1").arg(libPath), "info");
+    if (!metadataPath.isEmpty() && QFile::exists(metadataPath)) {
+        logMessage(tr("📂 Metadata: %1").arg(metadataPath), "info");
+    }
+    
+    // Create output directory
+    QString outputDir = m_ProjectPath + "/il2cpp_dump";
+    QDir().mkpath(outputDir);
+    
+    // Run the dumper
+    QProcess *dumper = new QProcess(this);
+    dumper->setWorkingDirectory(QFileInfo(exePath).absolutePath());
+    
+    QStringList args;
+    args << libPath;
+    if (QFile::exists(metadataPath)) {
+        args << metadataPath;
+    }
+    args << outputDir;
+    
+    logMessage(tr("🚀 Running: %1 %2").arg(exePath, args.join(" ")), "info");
+    
+    connect(dumper, &QProcess::readyReadStandardOutput, this, [this, dumper]() {
+        QString output = QString::fromUtf8(dumper->readAllStandardOutput());
+        for (const QString &line : output.split('\n', Qt::SkipEmptyParts)) {
+            logMessage(line.trimmed(), "info");
+        }
+    });
+    
+    connect(dumper, &QProcess::readyReadStandardError, this, [this, dumper]() {
+        QString output = QString::fromUtf8(dumper->readAllStandardError());
+        for (const QString &line : output.split('\n', Qt::SkipEmptyParts)) {
+            logMessage(line.trimmed(), "warning");
+        }
+    });
+    
+    connect(dumper, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), 
+            this, [this, dumper, outputDir](int exitCode, QProcess::ExitStatus) {
+        if (exitCode == 0) {
+            logMessage(tr("✅ Dump completed successfully!"), "success");
+            logMessage(tr("📁 Output: %1").arg(outputDir), "info");
+            
+            // List generated files
+            QDir outDir(outputDir);
+            QStringList files = outDir.entryList(QDir::Files);
+            logMessage(tr("Generated %1 files:").arg(files.size()), "info");
+            for (const QString &file : files.mid(0, 10)) {
+                logMessage(tr("  • %1").arg(file), "info");
+            }
+            if (files.size() > 10) {
+                logMessage(tr("  ... and %1 more").arg(files.size() - 10), "info");
+            }
+        } else {
+            logMessage(tr("❌ Dumper exited with code %1").arg(exitCode), "error");
+        }
+        dumper->deleteLater();
+    });
+    
+    m_RunDumperBtn->setEnabled(false);
+    m_RunDumperBtn->setText(tr("⏳ Running..."));
+    
+    dumper->start(exePath, args);
+    
+    if (!dumper->waitForStarted(5000)) {
+        logMessage(tr("❌ Failed to start dumper: %1").arg(dumper->errorString()), "error");
+        m_RunDumperBtn->setEnabled(true);
+        m_RunDumperBtn->setText(tr("🔧 Run Dumper"));
+        dumper->deleteLater();
+        return;
+    }
+    
+    connect(dumper, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this](int, QProcess::ExitStatus) {
+        m_RunDumperBtn->setEnabled(true);
+        m_RunDumperBtn->setText(tr("🔧 Run Dumper"));
+    });
 }
 
 void AIGameModDialog::logMessage(const QString &message, const QString &type)
