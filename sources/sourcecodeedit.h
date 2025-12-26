@@ -73,7 +73,7 @@ class SourceCodeSidebarWidget : public QWidget
     Q_OBJECT
 public:
     explicit SourceCodeSidebarWidget(SourceCodeEdit *edit);
-    QSize sizeHint() const;
+    QSize sizeHint() const override;
 protected:
     void leaveEvent(QEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
