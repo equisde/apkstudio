@@ -1,9 +1,15 @@
-name: Build Windows
+name: Build
 
 on:
   push:
     branches:
+      - master
       - feature/antisplit
+  pull_request:
+    branches:
+      - master
+  release:
+    types: [created]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +17,7 @@ permissions:
 
 jobs:
   build-windows:
-    name: Windows Fresh Build
+    name: Build Windows
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -23,48 +29,65 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.1"
-          cache: false
-
-      - name: Install Ninja
-        run: choco install ninja
-
-      - name: Clean environment
-        run: |
-          if (Test-Path build) { Remove-Item -Recurse -Force build }
-          if (Test-Path bin) { Remove-Item -Recurse -Force bin }
-        shell: pwsh
+          cache: true
 
       - name: Configure CMake
         run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -GNinja
-        shell: pwsh
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: |
-          cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
-        shell: pwsh
+          cmake --build build --config Release --parallel
 
-      - name: Deploy Qt
+      - name: Deploy Qt dependencies
         shell: pwsh
         run: |
           $env:PATH = "$env:Qt6_DIR\bin;$env:PATH"
-          $ExePath = "build/bin/ApkStudio.exe"
-          if (!(Test-Path $ExePath)) { $ExePath = "build/ApkStudio.exe" }
-          windeployqt --release --no-translations --no-opengl-sw $ExePath
 
-      - name: Package
+          # Find the executable
+          $ExePath = ""
+          if (Test-Path "build\bin\Release\ApkStudio.exe") {
+            $ExePath = "build\bin\Release\ApkStudio.exe"
+          } elseif (Test-Path "build\Release\ApkStudio.exe") {
+            $ExePath = "build\Release\ApkStudio.exe"
+          } else {
+            Write-Host "Error: Executable not found. Searching..."
+            Get-ChildItem -Path build -Recurse -Filter "ApkStudio.exe" -ErrorAction SilentlyContinue | Select-Object FullName
+            exit 1
+          }
+
+          Write-Host "Found executable at: $ExePath"
+          windeployqt --release $ExePath
+
+      - name: Create archive
         shell: pwsh
         run: |
-          $TargetDir = "build/bin"
-          if (!(Test-Path $TargetDir)) { $TargetDir = "build" }
-          # Copy everything to a staging folder to avoid nesting
-          mkdir dist
-          cp "$TargetDir/*" dist/ -Recurse -Force
-          Compress-Archive -Path "dist/*" -DestinationPath ApkStudio-Windows-x64.zip
+          # Find the directory containing the executable
+          $SourceDir = ""
+          if (Test-Path "build\bin\Release") {
+            $SourceDir = "build\bin\Release"
+          } elseif (Test-Path "build\Release") {
+            $SourceDir = "build\Release"
+          } else {
+            Write-Host "Error: Release directory not found"
+            exit 1
+          }
 
-      - name: Upload
+          Write-Host "Creating archive from: $SourceDir"
+          Compress-Archive -Path "$SourceDir\*" -DestinationPath ApkStudio-Windows-x64.zip
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ApkStudio-Windows-Binaries
+          name: ApkStudio-Windows-x64
           path: ApkStudio-Windows-x64.zip
-          retention-days: 7
+          retention-days: 30
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: ApkStudio-Windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
