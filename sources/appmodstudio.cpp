@@ -6,6 +6,16 @@
 AppModStudio::AppModStudio(const QString &projectPath, QWidget *parent)
     : QWidget(parent), m_ProjectPath(projectPath)
 {
+    setupUI();
+}
+
+void AppModStudio::setProjectPath(const QString &path) {
+    m_ProjectPath = path;
+    m_ModTable->setRowCount(0);
+    m_AiLog->append("Project analysis started for: " + path);
+}
+
+void AppModStudio::setupUI() {
     auto layout = new QVBoxLayout(this);
     layout->setContentsMargins(10, 10, 10, 10);
     layout->setSpacing(15);

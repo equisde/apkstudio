@@ -15,6 +15,7 @@ class Il2CppStudio : public QWidget
     Q_OBJECT
 public:
     explicit Il2CppStudio(const QString &projectPath, QWidget *parent = nullptr);
+    void setProjectPath(const QString &path);
 
 private slots:
     void loadDumpFile();

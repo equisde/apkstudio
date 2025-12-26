@@ -169,6 +169,7 @@ void MainWindow::setupSidebars()
 }
 
 void MainWindow::analyzeProjectContext(const QString &path) {
+    if (path.isEmpty()) return;
     m_CurrentProjectPath = path;
 
     updateStatusBar(tr("AI Analyzing Environment..."));
@@ -177,27 +178,12 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     GameEngineDetector::Engine engine = GameEngineDetector::detectEngine(path);
     m_DetectedContext = GameEngineDetector::engineName(engine);
     
-    // 2. Inyectar Widgets Reales en el Sidebar (Reemplaza los labels iniciales)
-    m_SidebarStack->removeWidget(m_SecurityHub);
-    if(m_SecurityHub) m_SecurityHub->deleteLater();
-    m_SecurityHub = new SecurityHub(path);
-    m_SidebarStack->insertWidget(Security, m_SecurityHub);
-    
-    m_SidebarStack->removeWidget(m_CloningStudio);
-    if(m_CloningStudio) m_CloningStudio->deleteLater();
-    m_CloningStudio = new CloningStudio(path);
-    m_SidebarStack->insertWidget(Cloning, m_CloningStudio);
-    
-    m_SidebarStack->removeWidget(m_AppModStudio);
-    if(m_AppModStudio) m_AppModStudio->deleteLater();
-    m_AppModStudio = new AppModStudio(path);
-    m_SidebarStack->insertWidget(AppMod, m_AppModStudio);
-
-    // Il2Cpp Studio Pro Integration
-    m_SidebarStack->removeWidget(m_Il2CppStudio);
-    if(m_Il2CppStudio) m_Il2CppStudio->deleteLater();
-    m_Il2CppStudio = new Il2CppStudio(path);
-    m_SidebarStack->insertWidget(GameModding, m_Il2CppStudio);
+    // 2. Actualizar Widgets (SIN destruir, solo actualizar ruta)
+    if (m_Il2CppStudio) m_Il2CppStudio->setProjectPath(path);
+    if (m_SecurityHub) m_SecurityHub->setProjectPath(path);
+    if (m_CloningStudio) m_CloningStudio->setProjectPath(path);
+    if (m_AppModStudio) m_AppModStudio->setProjectPath(path);
+    if (m_AIStudioWidget) m_AIStudioWidget->setProjectPath(path);
 
     // 3. Actualizar Explorador
     m_ExplorerTree->clear();

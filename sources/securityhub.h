@@ -12,6 +12,7 @@ class SecurityHub : public QWidget
     Q_OBJECT
 public:
     explicit SecurityHub(const QString &projectPath, QWidget *parent = nullptr);
+    void setProjectPath(const QString &path);
 
 private slots:
     void analyzeNetworkSecurity();

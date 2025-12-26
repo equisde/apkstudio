@@ -6,6 +6,15 @@
 CloningStudio::CloningStudio(const QString &projectPath, QWidget *parent)
     : QWidget(parent), m_ProjectPath(projectPath)
 {
+    setupUI();
+}
+
+void CloningStudio::setProjectPath(const QString &path) {
+    m_ProjectPath = path;
+    m_Log->append("Project changed: " + path);
+}
+
+void CloningStudio::setupUI() {
     auto layout = new QVBoxLayout(this);
     layout->setContentsMargins(10, 10, 10, 10);
     layout->setSpacing(15);

@@ -13,6 +13,7 @@ class CloningStudio : public QWidget
     Q_OBJECT
 public:
     explicit CloningStudio(const QString &projectPath, QWidget *parent = nullptr);
+    void setProjectPath(const QString &path);
 
 private slots:
     void generateClone();

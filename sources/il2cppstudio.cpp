@@ -15,6 +15,17 @@ Il2CppStudio::Il2CppStudio(const QString &projectPath, QWidget *parent)
     : QWidget(parent), m_ProjectPath(projectPath)
 {
     m_NetworkManager = new QNetworkAccessManager(this);
+    setupUI();
+}
+
+void Il2CppStudio::setProjectPath(const QString &path) {
+    m_ProjectPath = path;
+    m_DumpContent.clear();
+    m_AnalysisReport->clear();
+    logMessage("Project re-indexed. Ready for new dump.");
+}
+
+void Il2CppStudio::setupUI() {
     auto layout = new QVBoxLayout(this);
     layout->setContentsMargins(5, 5, 5, 5);
 
