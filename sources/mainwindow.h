@@ -161,6 +161,12 @@ private slots:
     void handleToolSSLPinning();
     void handleToolCertInjector();
     
+    // Game modding tool handlers
+    void handleToolUnityGame();
+    void handleToolFlutterApp();
+    void handleToolGameValues();
+    void handleToolDetectEngine();
+    
     void openFile(const QString &file);
     void openFindReplaceDialog(QPlainTextEdit *edit, const bool replace);
     void openProject(const QString &folder, const bool last = false);

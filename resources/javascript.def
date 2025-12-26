@@ -1,0 +1,8 @@
+@include numbers
+@include strings
+keywords \b(async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|let|new|of|return|static|super|switch|this|throw|try|typeof|var|void|while|with|yield|from|as)\b
+types \b(Array|Boolean|Date|Error|Function|JSON|Map|Math|Number|Object|Promise|Proxy|RegExp|Set|String|Symbol|WeakMap|WeakSet|undefined|null|NaN|Infinity|true|false)\b
+functions \b(console|window|document|alert|confirm|prompt|setTimeout|setInterval|clearTimeout|clearInterval|fetch|require|module|exports)\b
+variables \b(this|self|global|globalThis)\b
+comments //[^\n]*
+comments? /\*|\*/

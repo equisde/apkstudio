@@ -9,6 +9,16 @@
         <file>xml.def</file>
         <file>yaml.def</file>
         <file>yml.def</file>
+        <file>javascript.def</file>
+        <file>typescript.def</file>
+        <file>css.def</file>
+        <file>dart.def</file>
+        <file>kotlin.def</file>
+        <file>go.def</file>
+        <file>rust.def</file>
+        <file>python.def</file>
+        <file>shell.def</file>
+        <file>sql.def</file>
     </qresource>
     <qresource prefix="/icons">
         <file>icon.ico</file>

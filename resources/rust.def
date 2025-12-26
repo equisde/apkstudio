@@ -1,0 +1,8 @@
+@include numbers
+@include strings
+keywords \b(as|async|await|break|const|continue|crate|dyn|else|enum|extern|false|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|Self|static|struct|super|trait|true|type|union|unsafe|use|where|while)\b
+types \b(bool|char|f32|f64|i8|i16|i32|i64|i128|isize|str|u8|u16|u32|u64|u128|usize|Box|Option|Result|String|Vec|HashMap|HashSet|Rc|Arc|RefCell|Cell)\b
+macros \b[a-z_][a-z0-9_]*!
+lifetimes '[a-z_][a-z0-9_]*
+comments //[^\n]*
+comments? /\*|\*/

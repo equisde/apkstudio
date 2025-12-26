@@ -1,0 +1,3 @@
+@include javascript
+keywords \b(type|interface|enum|namespace|module|declare|abstract|implements|private|protected|public|readonly|override|keyof|infer|extends|is|asserts|never|unknown|any)\b
+types \b(string|number|boolean|bigint|symbol|void|null|undefined|object|never|unknown|any)\b

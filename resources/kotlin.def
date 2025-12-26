@@ -1,0 +1,7 @@
+@include numbers
+@include strings
+keywords \b(abstract|actual|annotation|as|break|by|catch|class|companion|const|constructor|continue|crossinline|data|do|dynamic|else|enum|expect|external|false|field|file|final|finally|for|fun|get|if|import|in|infix|init|inline|inner|interface|internal|is|it|lateinit|noinline|null|object|open|operator|out|override|package|param|private|property|protected|public|receiver|reified|return|sealed|set|setparam|super|suspend|tailrec|this|throw|true|try|typealias|typeof|val|value|var|vararg|when|where|while)\b
+types \b(Any|Boolean|Byte|Char|Double|Float|Int|Long|Nothing|Number|Short|String|Unit|Array|List|Map|Set|MutableList|MutableMap|MutableSet|Pair|Triple)\b
+annotations @[a-zA-Z_][a-zA-Z0-9_]*
+comments //[^\n]*
+comments? /\*|\*/

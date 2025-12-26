@@ -35,6 +35,7 @@
 #include "findreplacedialog.h"
 #include "advancedcodeeditor.h"
 #include "apkanalysistools.h"
+#include "gamemodtools.h"
 #include "hexedit.h"
 #include "imageviewerwidget.h"
 #include "markdownviewerwidget.h"
@@ -523,6 +524,15 @@ QMenuBar *MainWindow::buildMenuBar()
     // Android TV submenu
     auto androidTV = tools->addMenu(tr("📺 Android TV"));
     androidTV->addAction(tr("TV Optimizer"), this, &MainWindow::handleToolAndroidTV);
+    
+    // Game Modding submenu
+    auto gameMod = tools->addMenu(tr("🎮 Game Modding"));
+    gameMod->addAction(tr("Detect Game Engine"), this, &MainWindow::handleToolDetectEngine);
+    gameMod->addSeparator();
+    gameMod->addAction(tr("Unity Game Analyzer"), this, &MainWindow::handleToolUnityGame);
+    gameMod->addAction(tr("Flutter App Analyzer"), this, &MainWindow::handleToolFlutterApp);
+    gameMod->addSeparator();
+    gameMod->addAction(tr("Game Value Editor"), this, &MainWindow::handleToolGameValues);
     
     tools->addSeparator();
     tools->addAction(tr("String Resource Editor"), this, &MainWindow::handleToolStringEditor);
@@ -2100,6 +2110,71 @@ void MainWindow::handleToolCertInjector()
     auto dialog = new CertificateInjectorDialog(projectPath, this);
     dialog->exec();
     dialog->deleteLater();
+}
+
+void MainWindow::handleToolUnityGame()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new UnityGameDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolFlutterApp()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new FlutterAnalyzerDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolGameValues()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    auto dialog = new GameValueEditorDialog(projectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void MainWindow::handleToolDetectEngine()
+{
+    QString projectPath = getCurrentProjectPath();
+    if (projectPath.isEmpty()) {
+        QMessageBox::warning(this, tr("No Project"), tr("Please open a decompiled APK project first."));
+        return;
+    }
+    
+    GameEngineDetector::Engine engine = GameEngineDetector::detectEngine(projectPath);
+    QString engineName = GameEngineDetector::engineName(engine);
+    
+    QString details = tr("Detected Game Engine: %1\n\n").arg(engineName);
+    
+    if (engine != GameEngineDetector::NativeAndroid && engine != GameEngineDetector::Unknown) {
+        details += tr("Relevant files:\n");
+        for (const QString &file : GameEngineDetector::getEngineFiles(engine)) {
+            details += QString("  • %1\n").arg(file);
+        }
+        
+        if (GameEngineDetector::supportsDecompilation(engine)) {
+            details += tr("\n✅ Decompilation is supported for this engine.");
+        } else {
+            details += tr("\n⚠️ Limited decompilation support for this engine.");
+        }
+    }
+    
+    QMessageBox::information(this, tr("Game Engine Detection"), details);
 }
 
 MainWindow::~MainWindow()

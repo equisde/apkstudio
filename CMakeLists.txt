@@ -84,6 +84,7 @@ set(SOURCES
     sources/deviceselectiondialog.cpp
     sources/findreplacedialog.cpp
     sources/flickcharm.cpp
+    sources/gamemodtools.cpp
     sources/hexedit.cpp
     sources/imageviewerwidget.cpp
     sources/languagesettingswidget.cpp
@@ -119,6 +120,7 @@ set(HEADERS
     sources/deviceselectiondialog.h
     sources/findreplacedialog.h
     sources/flickcharm.h
+    sources/gamemodtools.h
     sources/hexedit.h
     sources/imageviewerwidget.h
     sources/languagesettingswidget.h

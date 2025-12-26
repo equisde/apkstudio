@@ -1,0 +1,8 @@
+@include numbers
+@include strings
+keywords \b(important|inherit|initial|unset|auto|none|block|inline|flex|grid|absolute|relative|fixed|sticky|static|hidden|visible|scroll|center|left|right|top|bottom|solid|dashed|dotted|bold|normal|italic|uppercase|lowercase|capitalize)\b
+selectors [.#]?[a-zA-Z_][a-zA-Z0-9_-]*(?=\s*\{)
+properties \b(color|background|margin|padding|border|width|height|display|position|font|text|align|justify|flex|grid|transition|transform|animation|opacity|overflow|z-index|box-shadow|cursor|outline|content|list-style)[a-z-]*\b
+values #[0-9A-Fa-f]{3,8}\b
+functions \b(url|rgb|rgba|hsl|hsla|linear-gradient|radial-gradient|calc|var|attr|counter|rotate|scale|translate|skew)\b
+comments? /\*|\*/

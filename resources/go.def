@@ -1,0 +1,7 @@
+@include numbers
+@include strings
+keywords \b(break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go|goto|if|import|interface|map|package|range|return|select|struct|switch|type|var)\b
+types \b(bool|byte|complex64|complex128|error|float32|float64|int|int8|int16|int32|int64|rune|string|uint|uint8|uint16|uint32|uint64|uintptr|nil|true|false|iota)\b
+functions \b(append|cap|close|complex|copy|delete|imag|len|make|new|panic|print|println|real|recover)\b
+comments //[^\n]*
+comments? /\*|\*/
