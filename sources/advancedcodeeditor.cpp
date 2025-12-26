@@ -900,22 +900,22 @@ void AdvancedCodeEditor::contextMenuEvent(QContextMenuEvent *event)
     
     // Edit actions
     QMenu *editMenu = menu->addMenu(tr("📝 Edit"));
-    editMenu->addAction(tr("Duplicate Line"), this, &AdvancedCodeEditor::duplicateLine, QKeySequence(Qt::CTRL | Qt::Key_D));
-    editMenu->addAction(tr("Delete Line"), this, &AdvancedCodeEditor::deleteLine, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
-    editMenu->addAction(tr("Move Line Up"), this, &AdvancedCodeEditor::moveLineUp, QKeySequence(Qt::ALT | Qt::Key_Up));
-    editMenu->addAction(tr("Move Line Down"), this, &AdvancedCodeEditor::moveLineDown, QKeySequence(Qt::ALT | Qt::Key_Down));
+    editMenu->addAction(tr("Duplicate Line"), QKeySequence(Qt::CTRL | Qt::Key_D), this, &AdvancedCodeEditor::duplicateLine);
+    editMenu->addAction(tr("Delete Line"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K), this, &AdvancedCodeEditor::deleteLine);
+    editMenu->addAction(tr("Move Line Up"), QKeySequence(Qt::ALT | Qt::Key_Up), this, &AdvancedCodeEditor::moveLineUp);
+    editMenu->addAction(tr("Move Line Down"), QKeySequence(Qt::ALT | Qt::Key_Down), this, &AdvancedCodeEditor::moveLineDown);
     editMenu->addSeparator();
-    editMenu->addAction(tr("Toggle Comment"), this, &AdvancedCodeEditor::toggleComment, QKeySequence(Qt::CTRL | Qt::Key_Slash));
-    editMenu->addAction(tr("Format Document"), this, &AdvancedCodeEditor::formatDocument, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    editMenu->addAction(tr("Toggle Comment"), QKeySequence(Qt::CTRL | Qt::Key_Slash), this, &AdvancedCodeEditor::toggleComment);
+    editMenu->addAction(tr("Format Document"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F), this, &AdvancedCodeEditor::formatDocument);
     editMenu->addSeparator();
-    editMenu->addAction(tr("Join Lines"), this, &AdvancedCodeEditor::joinLines, QKeySequence(Qt::CTRL | Qt::Key_J));
+    editMenu->addAction(tr("Join Lines"), QKeySequence(Qt::CTRL | Qt::Key_J), this, &AdvancedCodeEditor::joinLines);
     editMenu->addAction(tr("Sort Lines"), this, &AdvancedCodeEditor::sortLines);
     editMenu->addAction(tr("Remove Duplicate Lines"), this, &AdvancedCodeEditor::removeDuplicateLines);
     
     // Selection
     QMenu *selectMenu = menu->addMenu(tr("🔍 Selection"));
-    selectMenu->addAction(tr("Select Word"), this, &AdvancedCodeEditor::selectWord, QKeySequence(Qt::CTRL | Qt::Key_W));
-    selectMenu->addAction(tr("Select Line"), this, &AdvancedCodeEditor::selectLine, QKeySequence(Qt::CTRL | Qt::Key_L));
+    selectMenu->addAction(tr("Select Word"), QKeySequence(Qt::CTRL | Qt::Key_W), this, &AdvancedCodeEditor::selectWord);
+    selectMenu->addAction(tr("Select Line"), QKeySequence(Qt::CTRL | Qt::Key_L), this, &AdvancedCodeEditor::selectLine);
     
     // Whitespace
     QMenu *wsMenu = menu->addMenu(tr("⬜ Whitespace"));
@@ -925,9 +925,9 @@ void AdvancedCodeEditor::contextMenuEvent(QContextMenuEvent *event)
     
     // Bookmarks
     QMenu *bookmarkMenu = menu->addMenu(tr("🔖 Bookmarks"));
-    bookmarkMenu->addAction(tr("Toggle Bookmark"), this, [this]() { toggleBookmark(); }, QKeySequence(Qt::CTRL | Qt::Key_M));
-    bookmarkMenu->addAction(tr("Next Bookmark"), this, &AdvancedCodeEditor::nextBookmark, QKeySequence(Qt::Key_F2));
-    bookmarkMenu->addAction(tr("Previous Bookmark"), this, &AdvancedCodeEditor::previousBookmark, QKeySequence(Qt::SHIFT | Qt::Key_F2));
+    bookmarkMenu->addAction(tr("Toggle Bookmark"), QKeySequence(Qt::CTRL | Qt::Key_M), this, [this]() { toggleBookmark(); });
+    bookmarkMenu->addAction(tr("Next Bookmark"), QKeySequence(Qt::Key_F2), this, &AdvancedCodeEditor::nextBookmark);
+    bookmarkMenu->addAction(tr("Previous Bookmark"), QKeySequence(Qt::SHIFT | Qt::Key_F2), this, &AdvancedCodeEditor::previousBookmark);
     bookmarkMenu->addSeparator();
     bookmarkMenu->addAction(tr("Clear All Bookmarks"), this, &AdvancedCodeEditor::clearBookmarks);
     

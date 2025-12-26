@@ -90,20 +90,20 @@ void MainWindow::setupMenuBar()
 
     // FILE
     auto fileMenu = menu->addMenu(tr("&File"));
-    fileMenu->addAction(QIcon(":/icons/icons8/icons8-android-os-48.png"), tr("Open &APK..."), this, &MainWindow::handleActionApk, QKeySequence::New);
-    fileMenu->addAction(QIcon(":/icons/icons8/icons8-folder-48.png"), tr("Open &Folder..."), this, &MainWindow::handleActionFolder, QKeySequence::Open);
+    fileMenu->addAction(QIcon(":/icons/icons8/icons8-android-os-48.png"), tr("Open &APK..."), QKeySequence::New, this, &MainWindow::handleActionApk);
+    fileMenu->addAction(QIcon(":/icons/icons8/icons8-folder-48.png"), tr("Open &Folder..."), QKeySequence::Open, this, &MainWindow::handleActionFolder);
     fileMenu->addSeparator();
-    m_ActionSave = fileMenu->addAction(tr("&Save"), this, &MainWindow::handleActionSave, QKeySequence::Save);
+    m_ActionSave = fileMenu->addAction(tr("&Save"), QKeySequence::Save, this, &MainWindow::handleActionSave);
     m_ActionSaveAll = fileMenu->addAction(tr("Save &All"), this, &MainWindow::handleActionSaveAll);
     fileMenu->addSeparator();
-    fileMenu->addAction(tr("&Settings"), this, &MainWindow::handleActionSettings, QKeySequence::Preferences);
+    fileMenu->addAction(tr("&Settings"), QKeySequence::Preferences, this, &MainWindow::handleActionSettings);
     fileMenu->addSeparator();
-    fileMenu->addAction(tr("&Quit"), this, &MainWindow::handleActionQuit, QKeySequence::Quit);
+    fileMenu->addAction(tr("&Quit"), QKeySequence::Quit, this, &MainWindow::handleActionQuit);
 
     // EDIT (Básico por ahora)
     auto editMenu = menu->addMenu(tr("&Edit"));
-    editMenu->addAction(tr("Undo"), this, [](){}, QKeySequence::Undo);
-    editMenu->addAction(tr("Redo"), this, [](){}, QKeySequence::Redo);
+    editMenu->addAction(tr("Undo"), QKeySequence::Undo, this, [](){});
+    editMenu->addAction(tr("Redo"), QKeySequence::Redo, this, [](){});
 
     // VIEW
     auto viewMenu = menu->addMenu(tr("&View"));
@@ -116,7 +116,7 @@ void MainWindow::setupMenuBar()
     auto toolsMenu = menu->addMenu(tr("&Tools"));
     
     auto gameMod = toolsMenu->addMenu(tr("🎮 Game Modding"));
-    gameMod->addAction(tr("AI Mod Studio"), this, &MainWindow::handleToolAIGameMod, QKeySequence("Ctrl+Shift+G"));
+    gameMod->addAction(tr("AI Mod Studio"), QKeySequence("Ctrl+Shift+G"), this, &MainWindow::handleToolAIGameMod);
     
     auto secHub = toolsMenu->addMenu(tr("🛡️ Security Hub"));
     secHub->addAction(tr("Analyze Network"), this, &MainWindow::handleSecurityAnalysis);
@@ -344,4 +344,3 @@ void MainWindow::handleAppModification() {}
 void MainWindow::handleAIAnalysisComplete(const QString&) {}
 void MainWindow::handleActionFile() {}
 MainWindow::~MainWindow() {}
-)");

@@ -57,12 +57,11 @@ void AppearanceSettingsWidget::save()
     settings.setValue("editor_whitespaces", m_CheckShowWhitespaces->isChecked());
     settings.sync();
     if (dark != m_RadioThemeDark->isChecked()) {
-        int btn = QMessageBox::information(this,
+        QMessageBox::StandardButton btn = QMessageBox::information(this,
                                            tr("Theme"),
                                            tr("Changes to app theme will be applied only when you restart APK studio."),
-                                           tr("Restart"),
-                                           tr("OK"));
-        if (btn == 0) {
+                                           QMessageBox::Restart | QMessageBox::Ok);
+        if (btn == QMessageBox::Restart) {
             QApplication::exit(CODE_RESTART);
         }
     }
