@@ -68,6 +68,7 @@ set_target_properties(QHexView PROPERTIES
 set(SOURCES
     sources/main.cpp
     sources/adbinstallworker.cpp
+    sources/advancedcodeeditor.cpp
     sources/aiconsolewidget.cpp
     sources/aisettingswidget.cpp
     sources/antisplitdialog.cpp
@@ -100,6 +101,7 @@ set(SOURCES
 
 set(HEADERS
     sources/adbinstallworker.h
+    sources/advancedcodeeditor.h
     sources/aiconsolewidget.h
     sources/aisettingswidget.h
     sources/antisplitdialog.h
@@ -109,7 +111,6 @@ set(HEADERS
     sources/apkrecompileworker.h
     sources/apksignworker.h
     sources/appearancesettingswidget.h
-    sources/markdownviewerwidget.h
     sources/binarysettingswidget.h
     sources/devicelistworker.h
     sources/deviceselectiondialog.h
@@ -118,6 +119,7 @@ set(HEADERS
     sources/hexedit.h
     sources/imageviewerwidget.h
     sources/mainwindow.h
+    sources/markdownviewerwidget.h
     sources/processutils.h
     sources/settingsdialog.h
     sources/signingconfigdialog.h

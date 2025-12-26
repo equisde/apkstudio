@@ -33,6 +33,7 @@
 #include "apksignworker.h"
 #include "deviceselectiondialog.h"
 #include "findreplacedialog.h"
+#include "advancedcodeeditor.h"
 #include "hexedit.h"
 #include "imageviewerwidget.h"
 #include "markdownviewerwidget.h"
@@ -51,9 +52,11 @@
 #define COLOR_OUTPUT 0xffffff
 #define COLOR_ERROR 0xfb0a2a
 
-#define IMAGE_EXTENSIONS "gif|jpeg|jpg|png"
+#define IMAGE_EXTENSIONS "gif|jpeg|jpg|png|webp|bmp|ico|svg"
 #define MARKDOWN_EXTENSIONS "md|markdown"
-#define TEXT_EXTENSIONS "java|html|properties|smali|txt|xml|yaml|yml|json|kt|kts|gradle|css|js"
+#define TEXT_EXTENSIONS "java|html|properties|smali|txt|xml|yaml|yml|json|kt|kts|gradle|css|js|ts|dart|swift|m|h|c|cpp|py|rb|go|rs|sql|sh|bash|ini|toml|cfg|pro|cmake"
+#define FLUTTER_EXTENSIONS "dart"
+#define BINARY_EXTENSIONS "so|dex|arsc|apk|jar|aar"
 
 #define URL_CONTRIBUTE "https://github.com/vaibhavpandeyvpz/apkstudio"
 #define URL_DOCUMENTATION "https://vaibhavpandey.com/apkstudio/"
@@ -487,11 +490,14 @@ int MainWindow::findTabIndex(const QString &path)
     for (int i = 0; i < total; i++) {
         QString path2;
         auto widget = m_TabEditors->widget(i);
+        auto advEdit = dynamic_cast<AdvancedCodeEditor *>(widget);
         auto edit = dynamic_cast<SourceCodeEdit *>(widget);
         auto hex = dynamic_cast<HexEdit *>(widget);
         auto viewer = dynamic_cast<ImageViewerWidget *>(widget);
         auto mdViewer = dynamic_cast<MarkdownViewerWidget *>(widget);
-        if (edit) {
+        if (advEdit) {
+            path2 = advEdit->filePath();
+        } else if (edit) {
             path2 = edit->filePath();
         } else if (hex) {
             path2 = hex->filePath();
@@ -1212,11 +1218,14 @@ void MainWindow::handleTabChanged(const int index)
 #endif
     QString path;
     auto widget = m_TabEditors->currentWidget();
+    auto advEdit = dynamic_cast<AdvancedCodeEditor *>(widget);
     auto edit = dynamic_cast<SourceCodeEdit *>(widget);
     auto hex = dynamic_cast<HexEdit *>(widget);
     auto viewer = dynamic_cast<ImageViewerWidget *>(widget);
     auto mdViewer = dynamic_cast<MarkdownViewerWidget *>(widget);
-    if (edit) {
+    if (advEdit) {
+        path = advEdit->filePath();
+    } else if (edit) {
         path = edit->filePath();
     } else if (hex) {
         path = hex->filePath();
@@ -1286,11 +1295,14 @@ void MainWindow::handleTabCloseRequested(const int index)
 #endif
     QString path;
     auto widget = m_TabEditors->widget(index);
+    auto advEdit = dynamic_cast<AdvancedCodeEditor *>(widget);
     auto edit = dynamic_cast<SourceCodeEdit *>(widget);
     auto hex = dynamic_cast<HexEdit *>(widget);
     auto viewer = dynamic_cast<ImageViewerWidget *>(widget);
     auto mdViewer = dynamic_cast<MarkdownViewerWidget *>(widget);
-    if (edit) {
+    if (advEdit) {
+        path = advEdit->filePath();
+    } else if (edit) {
         path = edit->filePath();
     } else if (hex) {
         path = hex->filePath();
@@ -1473,13 +1485,34 @@ void MainWindow::openFile(const QString &path)
         viewer->open(path);
         widget = viewer;
     } else if (!extension.isEmpty() && QString(TEXT_EXTENSIONS).contains(extension, Qt::CaseInsensitive)) {
-        auto editor = new SourceCodeEdit(this);
+        auto editor = new AdvancedCodeEditor(this);
         editor->open(path);
         widget = editor;
-    } else {
+    } else if (!extension.isEmpty() && QString(BINARY_EXTENSIONS).contains(extension, Qt::CaseInsensitive)) {
         auto hex = new HexEdit(this);
         hex->open(path);
         widget = hex;
+    } else {
+        // Try to detect if it's text or binary
+        QFile file(path);
+        if (file.open(QFile::ReadOnly)) {
+            QByteArray sample = file.read(1024);
+            file.close();
+            bool isBinary = sample.contains('\0');
+            if (isBinary) {
+                auto hex = new HexEdit(this);
+                hex->open(path);
+                widget = hex;
+            } else {
+                auto editor = new AdvancedCodeEditor(this);
+                editor->open(path);
+                widget = editor;
+            }
+        } else {
+            auto hex = new HexEdit(this);
+            hex->open(path);
+            widget = hex;
+        }
     }
     const QIcon icon = m_FileIconProvider.icon(info);
     auto item = new QStandardItem(icon, info.fileName());

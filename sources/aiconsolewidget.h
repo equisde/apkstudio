@@ -40,6 +40,7 @@ private:
     QStringList m_ConversationHistory;
     QString m_CurrentProjectContext;
     
+    bool hasExistingAnalysis();
     void sendToAI(const QString &message);
     QString buildProjectContext();
     QString getApiEndpoint();

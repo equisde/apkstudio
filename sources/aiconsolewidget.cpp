@@ -100,8 +100,37 @@ void AIConsoleWidget::setProjectPath(const QString &path)
     QString apiKey = settings.value("ai_api_key").toString();
     
     if (enabled && !apiKey.isEmpty() && autoAnalyze && !path.isEmpty()) {
-        analyzeProject();
+        // Check if analysis already exists
+        if (!hasExistingAnalysis()) {
+            analyzeProject();
+        } else {
+            appendSystemMessage(tr("📄 Previous analysis found. Use 'Analyze Project' button to re-analyze."));
+        }
     }
+}
+
+bool AIConsoleWidget::hasExistingAnalysis()
+{
+    if (m_ProjectPath.isEmpty()) return false;
+    
+    QDir projectDir(m_ProjectPath);
+    QStringList filters;
+    filters << "AI_Analysis_*.md";
+    QStringList files = projectDir.entryList(filters, QDir::Files, QDir::Time);
+    
+    if (!files.isEmpty()) {
+        // Check if the most recent analysis is less than 24 hours old
+        QString latestFile = projectDir.absoluteFilePath(files.first());
+        QFileInfo info(latestFile);
+        QDateTime lastModified = info.lastModified();
+        QDateTime now = QDateTime::currentDateTime();
+        
+        // If analysis is less than 24 hours old, consider it valid
+        if (lastModified.secsTo(now) < 86400) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void AIConsoleWidget::analyzeProject()
