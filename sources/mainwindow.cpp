@@ -149,6 +149,7 @@ void MainWindow::setupActivityBar()
 
 void MainWindow::setupSidebars()
 {
+    // 0. Explorer
     m_ExplorerTree = new QTreeWidget();
     m_ExplorerTree->setHeaderLabel(tr("PROJECT EXPLORER"));
     m_ExplorerTree->setStyleSheet("QTreeWidget { background-color: #252526; color: #cccccc; border: none; }");
@@ -158,12 +159,26 @@ void MainWindow::setupSidebars()
     });
     m_SidebarStack->addWidget(m_ExplorerTree);
 
+    // 1. Search (Placeholder por ahora)
     m_SidebarStack->addWidget(new QLabel("AI Search Coming Soon..."));
-    m_SidebarStack->addWidget(new QLabel("Open a Project..."));
-    m_SidebarStack->addWidget(new QLabel("Open a Project..."));
-    m_SidebarStack->addWidget(new QLabel("Open a Project..."));
-    m_SidebarStack->addWidget(new QLabel("Open a Project..."));
 
+    // 2. Game Modding
+    m_Il2CppStudio = new Il2CppStudio("");
+    m_SidebarStack->addWidget(m_Il2CppStudio);
+
+    // 3. Security Hub
+    m_SecurityHub = new SecurityHub("");
+    m_SidebarStack->addWidget(m_SecurityHub);
+
+    // 4. Cloning
+    m_CloningStudio = new CloningStudio("");
+    m_SidebarStack->addWidget(m_CloningStudio);
+
+    // 5. App Mod
+    m_AppModStudio = new AppModStudio("");
+    m_SidebarStack->addWidget(m_AppModStudio);
+
+    // 6. AI Agent Console
     m_AIStudioWidget = new AIConsoleWidget();
     m_SidebarStack->addWidget(m_AIStudioWidget);
 }
