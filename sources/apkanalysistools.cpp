@@ -584,7 +584,7 @@ void NativeLibraryDialog::analyzeLibrary(const QString &path)
     QFile file(path);
     if (file.open(QIODevice::ReadOnly)) {
         QByteArray header = file.read(64);
-        if (header.startsWith("\x7fELF")) {
+        if (header.startsWith("\x7f" "ELF")) {
             details += "<p><b>Format:</b> ELF</p>";
             
             int bitClass = header[4];
@@ -1484,88 +1484,3 @@ void ApkCompareDialog::compare()
     QMessageBox::information(this, tr("Comparison"), 
         tr("Basic comparison complete.\n\nFor detailed file-by-file comparison, decompile both APKs and use a diff tool."));
 }
-
-// ==================== String Resource Editor ====================
-StringResourceEditorDialog::StringResourceEditorDialog(const QString &projectPath, QWidget *parent)
-    : QDialog(parent), m_ProjectPath(projectPath)
-{
-    setWindowTitle(tr("String Resource Editor"));
-    setMinimumSize(700, 500);
-    
-    auto layout = new QVBoxLayout(this);
-    
-    auto topLayout = new QHBoxLayout();
-    topLayout->addWidget(new QLabel(tr("Language:"), this));
-    m_LanguageCombo = new QComboBox(this);
-    connect(m_LanguageCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &StringResourceEditorDialog::loadStrings);
-    topLayout->addWidget(m_LanguageCombo);
-    topLayout->addStretch();
-    
-    layout->addLayout(topLayout);
-    
-    m_StringsTable = new QTableWidget(this);
-    m_StringsTable->setColumnCount(2);
-    m_StringsTable->setHorizontalHeaderLabels({tr("Name"), tr("Value")});
-    m_StringsTable->horizontalHeader()->setStretchLastSection(true);
-    layout->addWidget(m_StringsTable);
-    
-    auto buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Close, this);
-    connect(buttons, &QDialogButtonBox::accepted, this, &StringResourceEditorDialog::saveStrings);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    layout->addWidget(buttons);
-    
-    QDir resDir(m_ProjectPath + "/res");
-    QStringList valueDirs = resDir.entryList(QStringList() << "values*", QDir::Dirs);
-    for (const QString &dir : valueDirs) {
-        QString lang = dir == "values" ? "Default" : dir.mid(7);
-        m_LanguageCombo->addItem(lang, dir);
-    }
-    if (m_LanguageCombo->count() > 0) loadStrings();
-}
-
-void StringResourceEditorDialog::loadStrings() { m_StringsTable->setRowCount(0); }
-void StringResourceEditorDialog::saveStrings() { accept(); }
-void StringResourceEditorDialog::addString() {}
-void StringResourceEditorDialog::removeString() {}
-
-// ==================== Certificate Info ====================
-CertificateInfoDialog::CertificateInfoDialog(const QString &apkPath, QWidget *parent)
-    : QDialog(parent), m_ApkPath(apkPath)
-{
-    setWindowTitle(tr("Certificate Information"));
-    setMinimumSize(500, 400);
-    auto layout = new QVBoxLayout(this);
-    m_CertTable = new QTableWidget(this);
-    m_CertTable->setColumnCount(2);
-    m_CertTable->setHorizontalHeaderLabels({tr("Property"), tr("Value")});
-    layout->addWidget(m_CertTable);
-    auto buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    layout->addWidget(buttons);
-    extractCertInfo();
-}
-
-void CertificateInfoDialog::extractCertInfo()
-{
-    m_CertTable->setRowCount(1);
-    m_CertTable->setItem(0, 0, new QTableWidgetItem("APK"));
-    m_CertTable->setItem(0, 1, new QTableWidgetItem(m_ApkPath));
-}
-
-// ==================== APK Compare ====================
-ApkCompareDialog::ApkCompareDialog(QWidget *parent) : QDialog(parent)
-{
-    setWindowTitle(tr("Compare APKs"));
-    setMinimumSize(800, 600);
-    auto layout = new QVBoxLayout(this);
-    m_DiffTree = new QTreeWidget(this);
-    m_DiffTree->setHeaderLabels({tr("File"), tr("Status")});
-    layout->addWidget(m_DiffTree);
-    auto buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    layout->addWidget(buttons);
-}
-
-void ApkCompareDialog::selectApk1() {}
-void ApkCompareDialog::selectApk2() {}
-void ApkCompareDialog::compare() {}

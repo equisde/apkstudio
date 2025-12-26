@@ -146,7 +146,6 @@ void MarkdownViewerWidget::updatePreview()
     QString html = convertMarkdownToHtml(m_RawContent);
     m_Browser->setHtml(html);
 }
-}
 
 QString MarkdownViewerWidget::escapeHtml(const QString &text)
 {
