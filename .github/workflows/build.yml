@@ -44,6 +44,11 @@ jobs:
           cache: true
           dir: ${{ runner.temp }}/Qt
 
+      - name: Clean project
+        run: |
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+        shell: pwsh
+
       - name: Configure CMake
         run: |
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
@@ -141,6 +146,7 @@ jobs:
 
       - name: Configure CMake
         run: |
+          rm -rf build
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
       - name: Build (parallel)
@@ -246,7 +252,9 @@ jobs:
           echo "QT_DIR=$QT_DIR" >> $GITHUB_ENV
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.QT_DIR }}"
+        run: |
+          rm -rf build
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ env.QT_DIR }}"
 
       - name: Build (parallel)
         run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)

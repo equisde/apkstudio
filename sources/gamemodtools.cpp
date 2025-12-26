@@ -389,21 +389,15 @@ void AIGameModDialog::askAI(const QString &prompt, std::function<void(const QStr
     });
 }
 
-// Stubs for legacy support
-UnityGameDialog::UnityGameDialog(const QString &p, QWidget *par) : QDialog(par) { (new AIGameModDialog(p, par))->show(); }
-FlutterAnalyzerDialog::FlutterAnalyzerDialog(const QString &p, QWidget *par) : QDialog(par) { (new AIGameModDialog(p, par))->show(); }
-GameValueEditorDialog::GameValueEditorDialog(const QString &p, QWidget *par) : QDialog(par) { (new AIGameModDialog(p, par))->show(); }
-
-void AIGameModDialog::detectEngine() { detectEngine(); } // Recursive call fix not needed in actual code logic but for stub consistency
-void AIGameModDialog::downloadTools() { downloadTools(); }
-void AIGameModDialog::runDumper() { runDumper(); }
-void AIGameModDialog::analyzeWithAI() { analyzeWithAI(); }
-void AIGameModDialog::applyMod() { applyMod(); }
 void AIGameModDialog::generatePatch() {}
-void AIGameModDialog::searchValues() { searchValues(); }
 void AIGameModDialog::bypassSSL() {}
 void AIGameModDialog::bypassAntiCheat() {}
 void AIGameModDialog::bypassIAP() {}
 void AIGameModDialog::extractAssets() {}
 void AIGameModDialog::saveModProfile() {}
 void AIGameModDialog::applyPatch(const QString &, const QByteArray &, const QByteArray &) {}
+
+// Stubs for legacy support
+UnityGameDialog::UnityGameDialog(const QString &p, QWidget *par) : QDialog(par) { (new AIGameModDialog(p, par))->show(); }
+FlutterAnalyzerDialog::FlutterAnalyzerDialog(const QString &p, QWidget *par) : QDialog(par) { (new AIGameModDialog(p, par))->show(); }
+GameValueEditorDialog::GameValueEditorDialog(const QString &p, QWidget *par) : QDialog(par) { (new AIGameModDialog(p, par))->show(); }
