@@ -94,13 +94,26 @@ void Il2CppStudio::runAiTool() {
 
     logMessage("IA analyzing: " + selectedTool.name);
     
-    // Tomar fragmentos clave del dump para no exceder límites
-    QString context = m_DumpContent.mid(0, 20000); 
-    QString prompt = QString("As an Android RE expert, analyze this Il2Cpp dump. "
-                             "Task: %1. Return ONLY a JSON array of offsets and hex patches.")
+    // EXTRACCIÓN INTELIGENTE DE CONTEXTO
+    QString context;
+    QStringList keywords = {"Store", "Purchase", "Player", "Health", "Enemy", "Money", "Coin", "Gem", "Energy", "VIP"};
+    
+    for (const QString &key : keywords) {
+        int idx = m_DumpContent.indexOf(key, 0, Qt::CaseInsensitive);
+        if (idx != -1) {
+            context += "\n--- Context for " + key + " ---\n";
+            context += m_DumpContent.mid(qMax(0, idx - 500), 2000); // 2KB alrededor de la coincidencia
+        }
+        if (context.length() > 30000) break; 
+    }
+
+    if (context.isEmpty()) context = m_DumpContent.mid(0, 15000);
+
+    QString prompt = QString("You are an expert game modder. Use the following snippets from dump.cs to find: %1. "
+                             "Identify method names and offsets. Return a JSON array of patches.")
                      .arg(selectedTool.aiPrompt);
 
-    askAI(prompt + "\n\nDump:\n" + context, [this](const QString &res) {
+    askAI(prompt + "\n\nRelevant Code Snippets:\n" + context, [this](const QString &res) {
         m_AnalysisReport->append("<h3>Results</h3><pre>" + res + "</pre>");
         
         QFile f(m_ProjectPath + "/AI_BINARY_PATCHES.json");

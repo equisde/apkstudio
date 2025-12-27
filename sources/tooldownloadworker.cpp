@@ -254,6 +254,9 @@ void ToolDownloadWorker::download()
         case ILSpyCmd:
             settings.setValue("ilspy_cmd", executablePath);
             break;
+        case Mono:
+            settings.setValue("mono_mcs_exe", executablePath);
+            break;
         }
         settings.sync();
 
@@ -326,6 +329,9 @@ QString ToolDownloadWorker::getDownloadUrl()
     
     case ILSpyCmd:
         return getLatestGitHubRelease("icsharpcode/ILSpy", "ilspycmd-.*-x64\\.zip$");
+    
+    case Mono:
+        return "https://download.mono-project.com/archive/6.12.0/windows-installer/mono-6.12.0.122-x64.msi";
     }
     
     return QString();

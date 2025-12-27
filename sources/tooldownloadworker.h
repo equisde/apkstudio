@@ -18,7 +18,8 @@ public:
         Jadx,
         Adb,
         UberApkSigner,
-        ILSpyCmd
+        ILSpyCmd,
+        Mono
     };
     Q_ENUM(ToolType)
 
