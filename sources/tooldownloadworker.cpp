@@ -88,7 +88,7 @@ void ToolDownloadWorker::download()
     // Download file
     QNetworkRequest request;
     request.setUrl(QUrl(downloadUrl));
-    request.setRawHeader("User-Agent", "APK Studio");
+    request.setRawHeader("User-Agent", "APK-Studio-Pro");
     m_NetworkReply = m_NetworkManager->get(request);
 
     QObject::connect(m_NetworkReply, &QNetworkReply::downloadProgress, this, [this, fileName](qint64 bytesReceived, qint64 bytesTotal) {
@@ -276,7 +276,7 @@ QString ToolDownloadWorker::getDownloadUrl()
 {
     QString platform;
 #ifdef Q_OS_WIN
-    platform = "windows";
+    platform = "win";
 #elif defined(Q_OS_MACOS)
     platform = "darwin";
 #else
@@ -288,20 +288,16 @@ QString ToolDownloadWorker::getDownloadUrl()
     {
         // Microsoft OpenJDK platform-specific URLs
         if (platform == "darwin") {
-            // macOS - use aarch64 (Apple Silicon) version
-            // Note: For Intel Macs, you may need to provide x64 URL
             return "https://aka.ms/download-jdk/microsoft-jdk-11.0.29-macos-aarch64.pkg";
         } else if (platform == "linux") {
-            // Linux
             return "https://aka.ms/download-jdk/microsoft-jdk-11.0.29-linux-x64.tar.gz";
         } else {
-            // Windows
             return "https://aka.ms/download-jdk/microsoft-jdk-11.0.29-windows-x64.msi";
         }
     }
         
     case Apktool:
-        return getLatestGitHubRelease("iBotPeaches/Apktool", "apktool.*\\.jar$");
+        return getLatestGitHubRelease("iBotPeaches/Apktool", "apktool_.*\\.jar$");
         
     case Jadx:
     {
@@ -325,10 +321,11 @@ QString ToolDownloadWorker::getDownloadUrl()
     }
     
     case UberApkSigner:
-        return getLatestGitHubRelease("patrickfav/uber-apk-signer", "uber-apk-signer.*\\.jar$");
+        return getLatestGitHubRelease("patrickfav/uber-apk-signer", "uber-apk-signer-.*\\.jar$");
     
     case ILSpyCmd:
-        return getLatestGitHubRelease("icsharpcode/ILSpy", "ilspycmd-.*-x64\\.zip$");
+        // ILSpyCmd is often in ILSpy releases, matching binaries zip
+        return getLatestGitHubRelease("icsharpcode/ILSpy", "ILSpy_binaries_.*-x64\\.zip$");
     
     case Mono:
         return "https://download.mono-project.com/archive/6.12.0/windows-installer/mono-6.12.0.122-x64.msi";
@@ -635,11 +632,11 @@ bool ToolDownloadWorker::installPkg(const QString &pkgPath, const QString &insta
         // Use osascript to run installer with admin privileges
         // Escape the pkg path for use in AppleScript
         QString escapedPkgPath = pkgPath;
-        escapedPkgPath.replace("\\", "\\\\");
+        escapedPkgPath.replace("\", "\\\\");
         escapedPkgPath.replace("\"", "\\\"");
         
         // Build the AppleScript command
-        QString script = QString("do shell script \"installer -pkg \\\"%1\\\" -target / -verboseR\" with administrator privileges")
+        QString script = QString("do shell script \"installer -pkg \\"%1\\" -target / -verboseR\" with administrator privileges")
                             .arg(escapedPkgPath);
         
         QStringList args;
@@ -1051,7 +1048,9 @@ QString ToolDownloadWorker::getLatestGitHubRelease(const QString &repo, const QS
     QNetworkAccessManager manager;
     QNetworkRequest request;
     request.setUrl(QUrl(apiUrl));
-    request.setRawHeader("User-Agent", "APK Studio");
+    request.setRawHeader("User-Agent", "APK-Studio-Pro");
+    request.setRawHeader("Accept", "application/vnd.github.v3+json");
+    
     QNetworkReply *reply = manager.get(request);
     
     QEventLoop loop;
@@ -1059,6 +1058,7 @@ QString ToolDownloadWorker::getLatestGitHubRelease(const QString &repo, const QS
     loop.exec();
     
     if (reply->error() != QNetworkReply::NoError) {
+        qDebug() << "GitHub API Error for" << repo << ":" << reply->errorString();
         reply->deleteLater();
         return QString();
     }
@@ -1077,12 +1077,77 @@ QString ToolDownloadWorker::getLatestGitHubRelease(const QString &repo, const QS
     
     for (const QJsonValue &asset : assets) {
         QJsonObject assetObj = asset.toObject();
-        QString name = assetObj["browser_download_url"].toString();
+        QString name = assetObj["name"].toString();
+        QString url = assetObj["browser_download_url"].toString();
+        
         if (pattern.match(name).hasMatch()) {
-            return name;
+            qDebug() << "Found matching asset for" << repo << ":" << name;
+            return url;
         }
+    }
+    
+    qDebug() << "No matching asset found for" << repo << "with pattern" << assetPattern;
+    return QString();
+}
+
+QString ToolDownloadWorker::getDownloadUrl()
+{
+    QString platform;
+#ifdef Q_OS_WIN
+    platform = "win";
+#elif defined(Q_OS_MACOS)
+    platform = "darwin";
+#else
+    platform = "linux";
+#endif
+
+    switch (m_Tool) {
+    case Java:
+    {
+        // Microsoft OpenJDK platform-specific URLs
+        if (platform == "darwin") {
+            return "https://aka.ms/download-jdk/microsoft-jdk-11.0.29-macos-aarch64.pkg";
+        } else if (platform == "linux") {
+            return "https://aka.ms/download-jdk/microsoft-jdk-11.0.29-linux-x64.tar.gz";
+        } else {
+            return "https://aka.ms/download-jdk/microsoft-jdk-11.0.29-windows-x64.msi";
+        }
+    }
+        
+    case Apktool:
+        return getLatestGitHubRelease("iBotPeaches/Apktool", "apktool_.*\\.jar$");
+        
+    case Jadx:
+    {
+        QString url = getLatestGitHubRelease("skylot/jadx", QString("jadx-.*-%1\\.zip$").arg(platform));
+        if (url.isEmpty()) {
+            // Fallback to generic zip
+            url = getLatestGitHubRelease("skylot/jadx", "jadx-.*\\.zip$");
+        }
+        return url;
+    }
+    
+    case Adb:
+    {
+        if (platform == "darwin") {
+            return "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip";
+        } else if (platform == "linux") {
+            return "https://dl.google.com/android/repository/platform-tools-latest-linux.zip";
+        } else {
+            return "https://dl.google.com/android/repository/platform-tools-latest-windows.zip";
+        }
+    }
+    
+    case UberApkSigner:
+        return getLatestGitHubRelease("patrickfav/uber-apk-signer", "uber-apk-signer-.*\\.jar$");
+    
+    case ILSpyCmd:
+        // ILSpyCmd is often in ILSpy releases, matching binaries zip
+        return getLatestGitHubRelease("icsharpcode/ILSpy", "ILSpy_binaries_.*-x64\\.zip$");
+    
+    case Mono:
+        return "https://download.mono-project.com/archive/6.12.0/windows-installer/mono-6.12.0.122-x64.msi";
     }
     
     return QString();
 }
-
