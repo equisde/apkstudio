@@ -92,12 +92,24 @@ void Il2CppStudio::runAiTool() {
     AITool selectedTool;
     for(const auto &t : m_Tools) if(t.id == id) selectedTool = t;
 
-    logMessage("IA starting analysis: " + selectedTool.name);
-    QString prompt = "Analyze this dump context and find: " + selectedTool.aiPrompt + "\n\nContext:\n" + m_DumpContent.mid(0, 10000);
+    logMessage("IA analyzing: " + selectedTool.name);
+    QString prompt = QString("You are a professional game modder. Analyze this dump.cs snippet and find the exact offset for: %1. "
+                             "Return ONLY a JSON array of patches like this: [{\"offset\": \"0x123456\", \"hex\": \"0000A0E31EFF2FE1\"}]")
+                     .arg(selectedTool.aiPrompt);
     
+    // Incluir fragmentos relevantes del dump (por ahora simplificado)
+    prompt += "\n\nDump Context:\n" + m_DumpContent.mid(0, 15000);
+
     askAI(prompt, [this](const QString &res) {
-        m_AnalysisReport->append("<h3>AI Analysis Result</h3>" + res);
-        logMessage("Analysis Complete. Report generated.");
+        m_AnalysisReport->append("<h3>AI Suggested Patches</h3><pre>" + res + "</pre>");
+        
+        // Guardar parches para el recompilador
+        QFile f(m_ProjectPath + "/AI_BINARY_PATCHES.json");
+        if(f.open(QFile::WriteOnly)) {
+            f.write(res.toUtf8());
+            f.close();
+            logMessage("Binary patches saved! They will be applied during APK Build.");
+        }
     });
 }
 

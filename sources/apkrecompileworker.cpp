@@ -51,6 +51,8 @@ void ApkRecompileWorker::recompile() {
     emit progress(60, "Applying AI Binary Patches to libil2cpp.so...");
     applyAiPatches(m_Folder + "/lib/arm64-v8a/libil2cpp.so");
     applyAiPatches(m_Folder + "/lib/armeabi-v7a/libil2cpp.so");
+    applyAiPatches(m_Folder + "/lib/x86/libil2cpp.so");
+    applyAiPatches(m_Folder + "/lib/x86_64/libil2cpp.so");
 
     emit progress(70, "Running Apktool build...");
     // ... Lógica de Apktool ya existente ...

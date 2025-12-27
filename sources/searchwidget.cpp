@@ -67,5 +67,9 @@ void SearchWidget::performSearch() {
 }
 
 void SearchWidget::onResultClicked(QListWidgetItem *item) {
-    // Aquí dispararíamos la apertura del archivo en MainWindow
+    QString path = item->data(Qt::UserRole).toString();
+    int line = item->data(Qt::UserRole + 1).toInt();
+    if (!path.isEmpty()) {
+        emit fileOpenRequested(path, line);
+    }
 }

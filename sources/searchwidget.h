@@ -15,6 +15,9 @@ public:
     explicit SearchWidget(const QString &projectPath, QWidget *parent = nullptr);
     void setProjectPath(const QString &path);
 
+signals:
+    void fileOpenRequested(const QString &path, int line);
+
 private slots:
     void performSearch();
     void onResultClicked(QListWidgetItem *item);

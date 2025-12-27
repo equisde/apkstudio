@@ -164,6 +164,11 @@ void MainWindow::setupSidebars()
     // 1. Search
     m_SearchWidget = new SearchWidget("");
     m_SidebarStack->addWidget(m_SearchWidget);
+    connect(m_SearchWidget, &SearchWidget::fileOpenRequested, this, [this](const QString &path, int line) {
+        openFile(path);
+        auto editor = dynamic_cast<AdvancedCodeEditor*>(m_TabEditors->currentWidget());
+        if (editor) editor->gotoLine(line);
+    });
 
     // 2. Game Modding
     m_Il2CppStudio = new Il2CppStudio("");
