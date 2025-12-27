@@ -5,6 +5,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QEventLoop>
+#include <QFile>
 
 UniversalReverser::UniversalReverser(const QString &projectPath, QObject *parent)
     : QObject(parent), m_ProjectPath(projectPath)

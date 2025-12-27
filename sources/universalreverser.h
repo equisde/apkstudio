@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QStringList>
+#include <QSettings>
 
 class UniversalReverser : public QObject
 {
@@ -20,6 +21,7 @@ signals:
     void finished();
 
 private:
+    void checkAndDownloadTool(int toolType);
     QString m_ProjectPath;
 };
 

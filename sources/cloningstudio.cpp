@@ -2,6 +2,7 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QMessageBox>
+#include <QDateTime>
 
 CloningStudio::CloningStudio(const QString &projectPath, QWidget *parent)
     : QWidget(parent), m_ProjectPath(projectPath)

@@ -39,7 +39,6 @@ void AIConsoleWidget::handleCommand() {
     logMessage(cmd, "user");
     m_Input->clear();
 
-    // Prompt enriquecido con contexto de proyecto
     QString prompt = QString("You are an AI Agent inside APK Studio Pro. Project Path: %1. User Command: %2. "
                              "Analyze the decompiled sources and provide actionable engineering steps or patches.")
                      .arg(m_ProjectPath, cmd);
@@ -68,11 +67,12 @@ void AIConsoleWidget::askAI(const QString &prompt) {
     contents.append(content);
     root["contents"] = contents;
 
-    QNetworkRequest req(QUrl(QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2").arg(model, key)));
+    QNetworkRequest req;
+    req.setUrl(QUrl(QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2").arg(model, key)));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
     QNetworkReply *reply = m_NetworkManager->post(req, QJsonDocument(root).toJson());
-    connect(reply, &QNetworkReply::finished, [this, reply]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         if (reply->error() == QNetworkReply::NoError) {
             QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
             QString text = doc.object()["candidates"].toArray()[0].toObject()["content"].toObject()["parts"].toArray()[0].toObject()["text"].toString();

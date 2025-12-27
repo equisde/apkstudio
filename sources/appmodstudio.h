@@ -22,6 +22,7 @@ private slots:
 
 private:
     void setupUI();
+    void logMessage(const QString &msg);
     QString m_ProjectPath;
     QTableWidget *m_ModTable;
     QTextBrowser *m_AiLog;

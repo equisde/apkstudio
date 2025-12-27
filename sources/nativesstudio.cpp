@@ -5,6 +5,7 @@
 #include <QTime>
 #include <QDirIterator>
 #include <QMessageBox>
+#include <QTimer>
 
 NativeStudio::NativeStudio(const QString &projectPath, QWidget *parent)
     : QWidget(parent), m_ProjectPath(projectPath)

@@ -2,6 +2,8 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
+#include <QDir>
+#include <QTime>
 
 AppModStudio::AppModStudio(const QString &projectPath, QWidget *parent)
     : QWidget(parent), m_ProjectPath(projectPath)
@@ -48,6 +50,10 @@ void AppModStudio::setupUI() {
     btnPatch->setStyleSheet("background-color: #1f6feb; color: white; font-weight: bold; padding: 10px;");
     connect(btnPatch, &QPushButton::clicked, this, &AppModStudio::applyUnlockPatch);
     layout->addWidget(btnPatch);
+}
+
+void AppModStudio::logMessage(const QString &msg) {
+    m_AiLog->append("<i>[" + QTime::currentTime().toString() + "]</i> " + msg);
 }
 
 void AppModStudio::scanForPremiumLogic() {
