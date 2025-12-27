@@ -72,6 +72,10 @@ public:
     }
 };
 
+class UnityGameDialog : public QDialog { Q_OBJECT public: explicit UnityGameDialog(const QString &p, QWidget *par = nullptr); };
+class FlutterAnalyzerDialog : public QDialog { Q_OBJECT public: explicit FlutterAnalyzerDialog(const QString &p, QWidget *par = nullptr); };
+class GameValueEditorDialog : public QDialog { Q_OBJECT public: explicit GameValueEditorDialog(const QString &p, QWidget *par = nullptr); };
+
 class GameModToolDownloader {
 public:
     struct Tool { QString name; QString downloadUrl; };
