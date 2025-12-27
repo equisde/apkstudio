@@ -59,8 +59,17 @@ BinarySettingsWidget::BinarySettingsWidget(QWidget *parent) : QWidget(parent)
 void BinarySettingsWidget::downloadAllTools()
 {
     // Usar el diálogo de descarga existente para bajar todo en secuencia
-    auto dialog = new ToolDownloadDialog(this);
-    // Podríamos extender ToolDownloadDialog para manejar múltiples descargas
+    QList<ToolDownloadWorker::ToolType> tools = {
+        ToolDownloadWorker::Java,
+        ToolDownloadWorker::Apktool,
+        ToolDownloadWorker::Jadx,
+        ToolDownloadWorker::ILSpyCmd,
+        ToolDownloadWorker::Mono,
+        ToolDownloadWorker::UberApkSigner
+    };
+    
+    auto dialog = new ToolDownloadDialog(tools, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->show();
 }
 

@@ -1,9 +1,6 @@
 #ifndef BINARYSETTINGSWIDGET_H
 #define BINARYSETTINGSWIDGET_H
 
-#include <QCheckBox>
-#include <QLineEdit>
-#include <QSpinBox>
 #include <QWidget>
 
 class BinarySettingsWidget : public QWidget
@@ -11,25 +8,10 @@ class BinarySettingsWidget : public QWidget
     Q_OBJECT
 public:
     explicit BinarySettingsWidget(QWidget *parent = nullptr);
-private:
-    QCheckBox *m_CheckAapt2;
-    QLineEdit *m_EditAdbExe;
-    QLineEdit *m_EditApktoolJar;
-    QLineEdit *m_EditJadxExe;
-    QLineEdit *m_EditJavaExe;
-    QLineEdit *m_EditUberApkSignerJar;
-    QLineEdit *m_EditIl2CppDumperExe;
-    QSpinBox *m_SpinJavaHeap;
-    QLayout *buildForm();
-private slots:
-    void handleBrowseAdb();
-    void handleBrowseApktool();
-    void handleBrowseJadx();
-    void handleBrowseJava();
-    void handleBrowseUberApkSigner();
-    void handleBrowseIl2CppDumper();
+    
 public slots:
     void save();
+    void downloadAllTools();
 };
 
 #endif // BINARYSETTINGSWIDGET_H
