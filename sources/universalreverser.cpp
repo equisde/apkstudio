@@ -17,8 +17,10 @@ void UniversalReverser::autoDecompileAll() {
     // Lista de herramientas críticas según el contexto
     checkAndDownloadTool(ToolDownloadWorker::Jadx);
     
-    if (QDir(m_ProjectPath + "/assets/bin/Data/Managed").exists()) {
-        checkAndDownloadTool(ToolDownloadWorker::Apktool); // Para recompilar después
+    QDir managedDir(m_ProjectPath + "/assets/bin/Data/Managed");
+    if (managedDir.exists()) {
+        checkAndDownloadTool(ToolDownloadWorker::ILSpyCmd);
+        checkAndDownloadTool(ToolDownloadWorker::Apktool);
     }
 
     emit progress(20, tr("All tools ready. Starting parallel decompilation..."));
@@ -37,6 +39,7 @@ void UniversalReverser::checkAndDownloadTool(int toolType) {
         case ToolDownloadWorker::Jadx: key = "jadx_exe"; break;
         case ToolDownloadWorker::Apktool: key = "apktool_jar"; break;
         case ToolDownloadWorker::Adb: key = "adb_exe"; break;
+        case ToolDownloadWorker::ILSpyCmd: key = "ilspy_cmd"; break;
     }
 
     if (settings.value(key).toString().isEmpty() || !QFile::exists(settings.value(key).toString())) {
@@ -47,26 +50,31 @@ void UniversalReverser::checkAndDownloadTool(int toolType) {
         connect(worker, &ToolDownloadWorker::finished, &loop, &QEventLoop::quit);
         connect(worker, &ToolDownloadWorker::failed, &loop, &QEventLoop::quit);
         worker->download();
-        loop.exec(); // Espera síncrona en el hilo del reverser (que debe ser worker thread)
+        loop.exec(); 
         worker->deleteLater();
     }
-}
-
-void UniversalReverser::decompileDexToJava() {
-    QSettings settings;
-    QString jadx = settings.value("jadx_exe").toString();
-    if (jadx.isEmpty()) return;
-
-    emit progress(30, tr("Lifting DEX to Java..."));
-    QProcess::execute(jadx, {"-d", m_ProjectPath + "/java_src", m_ProjectPath + "/original.apk"});
 }
 
 void UniversalReverser::decompileDlls() {
     QDir managedDir(m_ProjectPath + "/assets/bin/Data/Managed");
     if (!managedDir.exists()) return;
 
-    emit progress(60, tr("Extracting C# Logic..."));
-    // Usar el dumper o de-compilador configurado
+    emit progress(60, tr("Lifting C# Assemblies to Source Code..."));
+    QString outDir = m_ProjectPath + "/csharp_src";
+    QDir().mkpath(outDir);
+
+    QSettings settings;
+    QString ilspy = settings.value("ilspy_cmd").toString();
+    
+    if (!ilspy.isEmpty() && QFile::exists(ilspy)) {
+        QString dllPath = managedDir.absolutePath() + "/Assembly-CSharp.dll";
+        if (QFile::exists(dllPath)) {
+            QProcess *proc = new QProcess(this);
+            proc->start(ilspy, {"-o", outDir, dllPath});
+            proc->waitForFinished();
+            emit progress(80, tr("C# decompilation complete. Check /csharp_src/"));
+        }
+    }
 }
 
 void UniversalReverser::decompileNatives() {

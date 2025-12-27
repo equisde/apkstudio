@@ -17,7 +17,8 @@ public:
         Apktool,
         Jadx,
         Adb,
-        UberApkSigner
+        UberApkSigner,
+        ILSpyCmd
     };
     Q_ENUM(ToolType)
 

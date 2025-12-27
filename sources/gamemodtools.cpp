@@ -178,6 +178,29 @@ void GameModStudio::downloadTools()
 
 void GameModStudio::runDumper()
 {
+    // 1. INTENTAR DESCOMPILACIÓN DE C# (Assembly-CSharp.dll)
+    QString managedPath = m_ProjectPath + "/assets/bin/Data/Managed/Assembly-CSharp.dll";
+    if (QFile::exists(managedPath)) {
+        logMessage("Assembly-CSharp.dll found. Running ILSpyCmd...", "info");
+        QSettings settings;
+        QString ilspy = settings.value("ilspy_cmd").toString();
+        
+        if (!ilspy.isEmpty() && QFile::exists(ilspy)) {
+            QString outDir = m_ProjectPath + "/csharp_src";
+            QDir().mkpath(outDir);
+            QProcess *p = new QProcess(this);
+            p->start(ilspy, {"-o", outDir, managedPath});
+            connect(p, &QProcess::finished, [=]() {
+                logMessage("C# Source extracted! AI analysis ready.", "success");
+                p->deleteLater();
+            });
+            return;
+        } else {
+            logMessage("ILSpyCmd not found. Run 'Setup Tools' to get it.", "error");
+        }
+    }
+
+    // 2. LOGICA DE IL2CPP DUMPER (Ya existente)
     QSettings settings;
     QString exe = settings.value("il2cpp_dumper_exe").toString();
     

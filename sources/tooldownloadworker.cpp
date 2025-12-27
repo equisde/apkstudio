@@ -251,6 +251,9 @@ void ToolDownloadWorker::download()
         case UberApkSigner:
             settings.setValue("uas_jar", executablePath);
             break;
+        case ILSpyCmd:
+            settings.setValue("ilspy_cmd", executablePath);
+            break;
         }
         settings.sync();
 
@@ -320,6 +323,9 @@ QString ToolDownloadWorker::getDownloadUrl()
     
     case UberApkSigner:
         return getLatestGitHubRelease("patrickfav/uber-apk-signer", "uber-apk-signer.*\\.jar$");
+    
+    case ILSpyCmd:
+        return getLatestGitHubRelease("icsharpcode/ILSpy", "ilspycmd-.*-x64\\.zip$");
     }
     
     return QString();
