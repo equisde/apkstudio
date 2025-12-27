@@ -115,6 +115,7 @@ set(SOURCES
     sources/il2cppstudio.cpp
     sources/nativesstudio.cpp
     sources/dllstudio.cpp
+    sources/searchwidget.cpp
     sources/universalreverser.cpp
     sources/sourcecodeedit.cpp
     sources/splashwindow.cpp
@@ -159,6 +160,7 @@ set(HEADERS
     sources/il2cppstudio.h
     sources/nativesstudio.h
     sources/dllstudio.h
+    sources/searchwidget.h
     sources/universalreverser.h
     sources/sourcecodeedit.h
     sources/splashwindow.h

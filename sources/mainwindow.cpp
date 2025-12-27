@@ -161,8 +161,9 @@ void MainWindow::setupSidebars()
     });
     m_SidebarStack->addWidget(m_ExplorerTree);
 
-    // 1. Search (Placeholder por ahora)
-    m_SidebarStack->addWidget(new QLabel("AI Search Coming Soon..."));
+    // 1. Search
+    m_SearchWidget = new SearchWidget("");
+    m_SidebarStack->addWidget(m_SearchWidget);
 
     // 2. Game Modding
     m_Il2CppStudio = new Il2CppStudio("");
@@ -202,6 +203,7 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     m_DetectedContext = GameEngineDetector::engineName(engine);
     
     // 2. Actualizar Widgets (SIN destruir, solo actualizar ruta)
+    if (m_SearchWidget) m_SearchWidget->setProjectPath(path);
     if (m_Il2CppStudio) m_Il2CppStudio->setProjectPath(path);
     if (m_SecurityHub) m_SecurityHub->setProjectPath(path);
     if (m_CloningStudio) m_CloningStudio->setProjectPath(path);
@@ -221,6 +223,11 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     m_StatusEngineInfo->setText("Context: " + m_DetectedContext);
     if (m_AIStudioWidget) m_AIStudioWidget->setProjectPath(path);
     
+    // 4. DISPARAR DESCOMPILACIÓN UNIVERSAL (IA Powered)
+    auto reverser = new UniversalReverser(path, this);
+    connect(reverser, &UniversalReverser::progress, this, &MainWindow::updateStatusBar);
+    reverser->autoDecompileAll(); // Ejecución asíncrona interna sugerida
+
     // Generar Reportes MD Automáticos
     QDir dir(path);
     QString report;

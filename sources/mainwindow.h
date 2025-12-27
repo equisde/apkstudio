@@ -24,6 +24,7 @@
 #include "il2cppstudio.h"
 #include "nativesstudio.h"
 #include "dllstudio.h"
+#include "searchwidget.h"
 
 class MainWindow : public QMainWindow
 {
@@ -116,6 +117,7 @@ private:
     Il2CppStudio *m_Il2CppStudio;
     NativeStudio *m_NativeStudio;
     DllStudio *m_DllStudio;
+    SearchWidget *m_SearchWidget;
     
     // Status
     QLabel *m_StatusProjectInfo;

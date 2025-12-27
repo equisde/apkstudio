@@ -10,6 +10,7 @@ public:
     explicit ApkRecompileWorker(const QString &folder, bool aapt2, const QString &extraArguments = QString(), QObject *parent = nullptr);
     void recompile();
 private:
+    void applyAiPatches(const QString &soPath);
     bool m_Aapt2;
     QString m_Folder;
     QString m_ExtraArguments;

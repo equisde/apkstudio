@@ -2,6 +2,35 @@
 #include <QDir>
 #include <QProcess>
 
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+
+void ApkRecompileWorker::applyAiPatches(const QString &soPath) {
+    if (!QFile::exists(soPath)) return;
+
+    QFile patchFile(m_Folder + "/AI_BINARY_PATCHES.json");
+    if (!patchFile.exists() || !patchFile.open(QFile::ReadOnly)) return;
+
+    QJsonDocument doc = QJsonDocument::fromJson(patchFile.readAll());
+    patchFile.close();
+
+    if (!doc.isArray()) return;
+    QJsonArray patches = doc.array();
+
+    QFile soFile(soPath);
+    if (soFile.open(QFile::ReadWrite)) {
+        for (const auto &p : patches) {
+            QJsonObject obj = p.toObject();
+            qint64 offset = obj["offset"].toVariant().toLongLong();
+            QByteArray hex = QByteArray::fromHex(obj["hex"].toString().toUtf8());
+            soFile.seek(offset);
+            soFile.write(hex);
+        }
+        soFile.close();
+    }
+}
+
 void ApkRecompileWorker::recompile() {
     emit started();
     emit progress(10, "Scanning for modified sub-components...");
@@ -19,6 +48,10 @@ void ApkRecompileWorker::recompile() {
     }
 
     // 3. RECOMPILAR APK (Smali + Resources)
-    emit progress(60, "Running Apktool build...");
+    emit progress(60, "Applying AI Binary Patches to libil2cpp.so...");
+    applyAiPatches(m_Folder + "/lib/arm64-v8a/libil2cpp.so");
+    applyAiPatches(m_Folder + "/lib/armeabi-v7a/libil2cpp.so");
+
+    emit progress(70, "Running Apktool build...");
     // ... Lógica de Apktool ya existente ...
 }
