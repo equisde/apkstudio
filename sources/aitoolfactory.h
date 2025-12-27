@@ -10,7 +10,6 @@ struct AITool {
     QString name;
     QString description;
     QString aiPrompt;
-    QString targetExt; // .dll, .smali, .so, .xml
 };
 
 class AIToolFactory {
@@ -18,30 +17,48 @@ public:
     static QList<AITool> getAllTools() {
         QList<AITool> tools;
         
-        // --- CATEGORÍA: DLL & C# REVERSING (Unity/C#) ---
-        tools << AITool{"dll_store_mod", "Unity C#", "AI Store Cracker", "Descompila Assembly-CSharp.dll y modifica precios.", "Busca métodos de compra y resta de saldo en C# y genera el código modificado.", ".dll"};
-        tools << AITool{"dll_gacha_odds", "Unity C#", "Gacha Odds Master", "Analiza probabilidades de drop en código C#.", "Busca tablas de probabilidad y sugiere parches para forzar drops raros.", ".dll"};
-        tools << AITool{"dll_anti_cheat", "Unity C#", "Unity AC Killer", "Detecta y anula sistemas de anti-cheat en C#.", "Busca lógicas de detección de trampas/memoria y genera el bypass.", ".dll"};
-        tools << AITool{"dll_player_stats", "Unity C#", "Player Object Editor", "Modifica HP, Daño y Velocidad en C#.", "Busca la clase Player y modifica sus atributos base.", ".dll"};
+        // --- CATEGORÍA 1: UNITY C# & DLL (10) ---
+        tools << AITool{"dll_iap_bypass", "Unity C#", "IAP Cracker IA", "Genera código C# para saltar el pago de Google Play.", "Analiza métodos de compra y devuelve el código modificado para forzar 'true'."};
+        tools << AITool{"dll_ads_kill", "Unity C#", "Ad-Killer Injector", "Elimina anuncios de UnityAds/AdMob.", "Localiza proveedores de anuncios y sugiere cómo anular los callbacks de carga."};
+        tools << AITool{"dll_anti_cheat", "Unity C#", "Unity AC Killer", "Detecta y anula sistemas de detección de memoria.", "Busca lógicas de checksum o hash de memoria en el juego y genera el bypass."};
+        tools << AITool{"dll_player_stats", "Unity C#", "Stats Master", "Modifica HP, Daño, Velocidad y Salto.", "Localiza la clase Player y sugiere modificaciones en los atributos de movimiento."};
+        tools << AITool{"dll_inventory", "Unity C#", "Inventory Hacker", "Desbloquea todos los items del inventario.", "Busca lógicas de posesión de items y sugiere forzar la cantidad a 999."};
+        tools << AITool{"dll_network", "Unity C#", "Network Decryptor", "Analiza protocolos de red propietarios.", "Busca lógicas de serialización y explica cómo se cifran los paquetes."};
+        tools << AITool{"dll_gacha", "Unity C#", "Gacha Odds IA", "Analiza probabilidades de loot boxes.", "Escanea tablas de probabilidad y sugiere cómo forzar el drop raro."};
+        tools << AITool{"dll_obfus_detect", "Unity C#", "De-obfuscator", "Limpia nombres de métodos ofuscados.", "Analiza el contexto del código y renombra funciones como 'a()' a nombres descriptivos."};
+        tools << AITool{"dll_level_unlock", "Unity C#", "Level Architect", "Desbloquea todos los mundos y niveles.", "Identifica banderas de progreso y sugiere cómo setearlas al máximo."};
+        tools << AITool{"dll_asset_logic", "Unity C#", "Asset Logic IA", "Analiza cómo se cargan los AssetBundles.", "Explica el flujo de descarga de recursos externos del juego."};
 
-        // --- CATEGORÍA: SECURITY HUB (IA Powered) ---
-        tools << AITool{"sec_ssl_bypass", "Security", "AI Network Unpinner", "Inyecta bypass de certificados en la capa de red.", "Analiza lógicas de validación SSL y genera un parche para confiar en todos.", ".smali"};
-        tools << AITool{"sec_root_cloak", "Security", "Root Cloak IA", "Oculta el estado de root a la aplicación.", "Busca binarios de root y propiedades de sistema para ofuscarlas.", ".smali"};
-        tools << AITool{"sec_debug_kill", "Security", "Anti-Debug Bypass", "Anula detecciones de debugger/emulator.", "Identifica checks de isDebuggerConnected y los anula.", ".smali"};
+        // --- CATEGORÍA 2: NATIVE & IL2CPP (10) ---
+        tools << AITool{"native_elf_dissect", "Native", "ELF Dissector IA", "Analiza símbolos y secciones ELF.", "Escanea la tabla de símbolos nativos en busca de funciones de protección."};
+        tools << AITool{"native_frida_gen", "Native", "Frida Hook Gen", "Genera scripts de Frida automáticos.", "Crea un script .js para interceptar la función nativa seleccionada."};
+        tools << AITool{"native_offset_map", "Native", "Offset Master", "Calcula RVA a Offset de archivo.", "Toma el VA del dump y da la dirección exacta para parchear el .so."};
+        tools << AITool{"native_syscall", "Native", "Syscall Tracer IA", "Analiza interacciones con el kernel.", "Identifica dónde el binario lee archivos o abre conexiones de red."};
+        tools << AITool{"native_anti_debug", "Native", "Anti-Debug Bypass", "Anula ptrace y chequeos de debugger.", "Busca llamadas a ptrace o isDebuggerConnected nativos y ofrece el parche."};
+        tools << AITool{"native_integrity", "Native", "Integrity Killer", "Anula chequeos de hash del APK.", "Identifica dónde el código nativo valida la firma del APK y sugiere el bypass."};
+        tools << AITool{"native_crypto", "Native", "Native Crypto IA", "Busca llaves AES/XOR ocultas.", "Analiza el segmento de datos del binario en busca de patrones de llaves criptográficas."};
+        tools << AITool{"native_modmenu", "Native", "ModMenu C++ Gen", "Genera el código C++ del menú flotante.", "Crea el source modmenu.cpp basado en los offsets encontrados."};
+        tools << AITool{"native_vtable", "Native", "VTable Explorer", "Analiza tablas de métodos virtuales.", "Explica la jerarquía de clases nativas de C++ en el binario."};
+        tools << AITool{"native_root_cloak", "Native", "Root Cloak IA", "Oculta el root a nivel nativo.", "Busca binarios como 'su' o 'magisk' en el código nativo y genera el bypass."};
 
-        // --- CATEGORÍA: CLONING & BRANDING ---
-        tools << AITool{"clone_pkg_rand", "Cloning", "Smart Package Renamer", "Cambia el ID de la app sin romper dependencias.", "Renombra el package name de forma recursiva en todo el proyecto.", ".xml"};
-        tools << AITool{"clone_str_trans", "Cloning", "AI App Translator", "Traduce toda la app a cualquier idioma.", "Traduce strings.xml manteniendo las llaves originales.", ".xml"};
+        // --- CATEGORÍA 3: JAVA & SECURITY (10) ---
+        tools << AITool{"sec_ssl_unpin", "Security", "SSL Unpinner Pro", "Elimina el pinning de certificados.", "Analiza TrustManagers personalizados y genera un parche Smali universal."};
+        tools << AITool{"sec_cert_bypass", "Security", "AI Cert Bypass", "Ignora validaciones de certificado.", "Modifica el checkServerTrusted para que no lance excepciones nunca."};
+        tools << AITool{"sec_proxy_detect", "Security", "VPN/Proxy Detector", "Anula detección de proxies.", "Busca lógicas de System.getProperty('http.proxyHost') y sugiere el bypass."};
+        tools << AITool{"sec_emulator", "Security", "Emulator Cloaker", "Oculta el emulador a la app.", "Identifica checks de hardware (Build.MODEL, Build.PRODUCT) y los ofusca."};
+        tools << AITool{"sec_tamper", "Security", "Anti-Tamper IA", "Busca lógicas de protección de archivos.", "Detecta si la app chequea sus propios archivos y anula la validación."};
+        tools << AITool{"sec_api_map", "Security", "API Usage Analyzer", "Explica qué permisos usa la app.", "Analiza llamadas a la API de Android y deduce el comportamiento de la app."};
+        tools << AITool{"sec_log_cleanup", "Security", "Log Stripper IA", "Elimina logs de depuración.", "Busca llamadas a Log.d/v/i y las comenta automáticamente para mayor sigilo."};
+        tools << AITool{"sec_overlay", "Security", "Overlay Defender", "Busca protecciones contra overlays.", "Detecta si la app impide ventanas flotantes y sugiere el bypass."};
+        tools << AITool{"sec_safety_net", "Security", "SafetyNet Bypass", "Analiza lógicas de integridad de Google.", "Busca integraciones de Play Integrity y sugiere cómo responder siempre exitoso."};
+        tools << AITool{"sec_perm_escalate", "Security", "Privilege Analyzer", "Busca vectores de escalada.", "Analiza el AndroidManifest.xml en busca de intents o servicios expuestos."};
 
-        // --- CATEGORÍA: IL2CPP & NATIVE ---
-        tools << AITool{"native_offset_fix", "Il2Cpp", "RVA Offset Fixer", "Corrige direcciones de memoria para parcheo manual.", "Calcula el offset real de archivo basado en el VA del dump.", ".so"};
-        tools << AITool{"auto_mod_report", "Automation", "Final Mod Report", "Resumen de todos los cambios.", "Genera un archivo MD con la documentación técnica de todo el modding realizado."};
-        
-        // --- CATEGORÍA: QUANTUM REVERSING (New) ---
-        tools << AITool{"rev_elf_dissect", "Native", "AI ELF Dissector", "Analiza la estructura del binario nativo.", "Escanea la tabla de símbolos y busca funciones de seguridad ocultas."};
-        tools << AITool{"rev_syscall_map", "Native", "Syscall Tracer IA", "Mapea llamadas al sistema.", "Identifica dónde el código nativo interactúa con el kernel (archivos, red)."};
-        tools << AITool{"rev_csharp_logic", "Unity", "C# Logic Architect", "Analiza el flujo de datos en C#.", "Busca el 'GameManager' y explica el ciclo de vida del juego."};
-        tools << AITool{"rev_proto_reconstruct", "Network", "Protobuf Rebuilder", "Reconstruye mensajes Protobuf.", "Analiza los buffers serializados y genera la definición .proto."};
+        // --- CATEGORÍA 4: AUTOMATION & CLONING (5) ---
+        tools << AITool{"auto_pkg_rename", "Automation", "Recursive Renamer", "Cambia el ID de la app en todo el proyecto.", "Renombra el package name de forma segura sin romper librerías nativas."};
+        tools << AITool{"auto_brand_gen", "Automation", "AI Rebranding", "Cambia nombres e iconos por IA.", "Genera nuevos strings y sugiere paletas de colores para la app."};
+        tools << AITool{"auto_translation", "Automation", "AI Multi-Lang", "Traduce la app a 20+ idiomas.", "Traduce strings.xml manteniendo el formato XML intacto."};
+        tools << AITool{"auto_smali_opt", "Automation", "Smali Optimizer", "Limpia y optimiza el código Smali.", "Elimina código muerto y optimiza registros en archivos .smali."};
+        tools << AITool{"auto_final_report", "Automation", "Full Mod Report", "Documentación técnica final.", "Genera un reporte profesional en Markdown de todos los cambios realizados."};
 
         return tools;
     }
