@@ -11,6 +11,7 @@
 #include <QNetworkReply>
 #include <QPlainTextEdit>
 #include <QProcess>
+#include <QComboBox>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QTableWidget>
