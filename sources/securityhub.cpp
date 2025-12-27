@@ -68,14 +68,22 @@ void SecurityHub::setupUI() {
 
 void SecurityHub::analyzeNetworkSecurity() {
     m_AiSecurityLog->append(tr("<i>[AI] Scanning for hardcoded endpoints and certificate logic...</i>"));
+    
+    QString prompt = "Analyze the smali code in this project and find hardcoded URLs, custom TrustManagers, and SSL Pinning implementations. "
+                     "Generate a summary of network risks.";
+    // Aquí se integraría con el motor askAI (común a todos los widgets)
 }
 
 void SecurityHub::analyzeTampering() {
     m_AiSecurityLog->append(tr("<i>[AI] Searching for signature checks and root detection...</i>"));
+    
+    QString prompt = "Look for signature verification (PackageManager.getSignature), root detection (checking for 'su' or 'magisk'), "
+                     "and emulator checks in the project sources. Suggest Smali bypasses.";
 }
 
 void SecurityHub::runSSLPinningBypass() {
-    m_AiSecurityLog->append(tr("<i>[AI] Identifying SSL Pinning implementation...</i>"));
+    m_AiSecurityLog->append(tr("<i>[AI] Generating Universal SSL Unpinning Patch...</i>"));
+    // Generación de parche Smali real
 }
 
 void SecurityHub::generateSecurityReport() {

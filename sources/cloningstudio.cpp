@@ -52,5 +52,13 @@ void CloningStudio::generateClone() {
 }
 
 void CloningStudio::aiSuggestCloneConfig() {
-    m_AiLog->append("<i>AI suggesting clone configuration...</i>");
+    m_AiLog->append("<i>[AI] Generating stealth clone configuration...</i>");
+    
+    // Sugerencia dinámica
+    QString originalPkg = "com.original.app"; // Esto debería venir de AndroidManifest.xml
+    QString suggested = originalPkg + ".clone." + QDateTime::currentDateTime().toString("mmss");
+    
+    m_EditNewPackage->setText(suggested);
+    m_EditNewName->setText("Clon AI " + QDateTime::currentDateTime().toString("hh:mm"));
+    m_AiLog->append("<span style='color: #7ee787;'>Suggested Package: " + suggested + "</span>");
 }
