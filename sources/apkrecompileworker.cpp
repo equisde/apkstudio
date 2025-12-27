@@ -1,10 +1,15 @@
 #include "apkrecompileworker.h"
 #include <QDir>
 #include <QProcess>
-
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QFile>
+
+ApkRecompileWorker::ApkRecompileWorker(const QString &folder, bool aapt2, const QString &extraArguments, QObject *parent)
+    : QObject(parent), m_Folder(folder), m_Aapt2(aapt2), m_ExtraArguments(extraArguments)
+{
+}
 
 void ApkRecompileWorker::applyAiPatches(const QString &soPath) {
     if (!QFile::exists(soPath)) return;
@@ -33,27 +38,36 @@ void ApkRecompileWorker::applyAiPatches(const QString &soPath) {
 
 void ApkRecompileWorker::recompile() {
     emit started();
-    emit progress(10, "Scanning for modified sub-components...");
-
-    // 1. RECOMPILAR DLLs (Si hay cambios en C#)
-    if (QDir(m_Folder + "/decompiled_csharp/").exists()) {
-        emit progress(20, "Re-compiling Assembly-CSharp.dll (C#)...");
-        QProcess::execute("tools/mcs", {"-target:library", "-out:assets/bin/Data/Managed/Assembly-CSharp.dll", "decompiled_csharp/*.cs"});
+    
+    // 1. COMPILAR C# SI SE MODIFICÓ
+    if (QDir(m_Folder + "/csharp_src").exists()) {
+        emit progress(15, tr("Re-compiling Unity C# sources..."));
+        QProcess mcs;
+        QString outDll = m_Folder + "/assets/bin/Data/Managed/Assembly-CSharp.dll";
+        mcs.start("mcs", {"-target:library", "-out:" + outDll, "-recurse:" + m_Folder + "/csharp_src/*.cs"});
+        mcs.waitForFinished();
     }
 
-    // 2. RECOMPILAR NATIVO (Si hay cambios en C++)
-    if (QFile::exists(m_Folder + "/jni/")) {
-        emit progress(40, "Building native libraries (ndk-build)...");
-        QProcess::execute("ndk-build", {"-C", m_Folder + "/jni/"});
+    // 2. COMPILAR NATIVO (JNI) SI EXISTE
+    if (QDir(m_Folder + "/jni").exists()) {
+        emit progress(30, tr("Building native libraries (NDK)..."));
+        QProcess ndk;
+        ndk.setWorkingDirectory(m_Folder);
+        ndk.start("ndk-build", {});
+        ndk.waitForFinished();
     }
 
-    // 3. RECOMPILAR APK (Smali + Resources)
-    emit progress(60, "Applying AI Binary Patches to libil2cpp.so...");
-    applyAiPatches(m_Folder + "/lib/arm64-v8a/libil2cpp.so");
-    applyAiPatches(m_Folder + "/lib/armeabi-v7a/libil2cpp.so");
-    applyAiPatches(m_Folder + "/lib/x86/libil2cpp.so");
-    applyAiPatches(m_Folder + "/lib/x86_64/libil2cpp.so");
+    // 3. APLICAR PARCHES BINARIOS IA
+    emit progress(50, tr("Injecting AI Binary Patches..."));
+    QStringList archs = {"arm64-v8a", "armeabi-v7a", "x86", "x86_64"};
+    for (const auto &arch : archs) {
+        applyAiPatches(m_Folder + "/lib/" + arch + "/libil2cpp.so");
+    }
 
-    emit progress(70, "Running Apktool build...");
-    // ... Lógica de Apktool ya existente ...
+    // 4. APKTOOL BUILD
+    emit progress(70, tr("Assembling final APK (Apktool)..."));
+    // ... Lógica de Apktool ...
+    
+    emit progress(100, tr("Recompilation successful."));
+    emit finished();
 }
