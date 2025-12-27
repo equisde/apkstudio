@@ -58,6 +58,16 @@ void UniversalReverser::checkAndDownloadTool(int toolType) {
     }
 }
 
+void UniversalReverser::decompileDexToJava() {
+    QSettings settings;
+    QString jadx = settings.value("jadx_exe").toString();
+    if (jadx.isEmpty()) return;
+
+    emit progress(30, tr("Lifting DEX to Java..."));
+    // Assuming original.apk exists or using the decompiled folder directly
+    QProcess::execute(jadx, {"-d", m_ProjectPath + "/java_src", m_ProjectPath});
+}
+
 void UniversalReverser::decompileDlls() {
     QDir managedDir(m_ProjectPath + "/assets/bin/Data/Managed");
     if (!managedDir.exists()) return;
