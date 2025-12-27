@@ -21,6 +21,7 @@ void UniversalReverser::autoDecompileAll() {
     QDir managedDir(m_ProjectPath + "/assets/bin/Data/Managed");
     if (managedDir.exists()) {
         checkAndDownloadTool(ToolDownloadWorker::ILSpyCmd);
+        checkAndDownloadTool(ToolDownloadWorker::Mono);
         checkAndDownloadTool(ToolDownloadWorker::Apktool);
     }
 
@@ -41,6 +42,7 @@ void UniversalReverser::checkAndDownloadTool(int toolType) {
         case ToolDownloadWorker::Apktool: key = "apktool_jar"; break;
         case ToolDownloadWorker::Adb: key = "adb_exe"; break;
         case ToolDownloadWorker::ILSpyCmd: key = "ilspy_cmd"; break;
+        case ToolDownloadWorker::Mono: key = "mono_mcs_exe"; break;
     }
 
     if (settings.value(key).toString().isEmpty() || !QFile::exists(settings.value(key).toString())) {

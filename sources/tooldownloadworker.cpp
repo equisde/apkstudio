@@ -361,6 +361,12 @@ QString ToolDownloadWorker::getExtractPath()
     case UberApkSigner:
         toolName = "uber-apk-signer";
         break;
+    case ILSpyCmd:
+        toolName = "ilspycmd";
+        break;
+    case Mono:
+        toolName = "mono";
+        break;
     }
     
     return basePath + "/tools/" + toolName;
@@ -427,6 +433,12 @@ QString ToolDownloadWorker::findExecutableInExtracted(const QString &extractedPa
         }
         // Fallback to exact name (will be checked in the recursive search below)
         executableNames << "uber-apk-signer.jar";
+        break;
+    case ILSpyCmd:
+        executableNames << "ilspycmd.exe" << "ilspycmd";
+        break;
+    case Mono:
+        executableNames << "bin/mcs" << "bin/mcs.exe" << "mcs" << "mcs.exe";
         break;
     }
     

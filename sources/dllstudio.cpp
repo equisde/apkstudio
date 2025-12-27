@@ -36,6 +36,7 @@ void DllStudio::setupUI() {
 void DllStudio::setProjectPath(const QString &path) {
     m_ProjectPath = path;
     scanDlls();
+    scanExtractedSource();
 }
 
 void DllStudio::scanDlls() {
@@ -43,6 +44,13 @@ void DllStudio::scanDlls() {
     QDir managedDir(m_ProjectPath + "/assets/bin/Data/Managed");
     for (const auto &info : managedDir.entryInfoList({"*.dll"}, QDir::Files)) {
         m_DllList->addItem(info.fileName());
+    }
+}
+
+void DllStudio::scanExtractedSource() {
+    QDir srcDir(m_ProjectPath + "/csharp_src");
+    if (srcDir.exists()) {
+        m_AiInsights->append(tr("Extracted C# sources found in /csharp_src/"));
     }
 }
 

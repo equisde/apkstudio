@@ -53,12 +53,29 @@ public:
         tools << AITool{"sec_safety_net", "Security", "SafetyNet Bypass", "Analiza lógicas de integridad de Google.", "Busca integraciones de Play Integrity y sugiere cómo responder siempre exitoso."};
         tools << AITool{"sec_perm_escalate", "Security", "Privilege Analyzer", "Busca vectores de escalada.", "Analiza el AndroidManifest.xml en busca de intents o servicios expuestos."};
 
-        // --- CATEGORÍA 4: AUTOMATION & CLONING (5) ---
+        // --- CATEGORÍA 4: AUTOMATION & CLONING (10) ---
         tools << AITool{"auto_pkg_rename", "Automation", "Recursive Renamer", "Cambia el ID de la app en todo el proyecto.", "Renombra el package name de forma segura sin romper librerías nativas."};
         tools << AITool{"auto_brand_gen", "Automation", "AI Rebranding", "Cambia nombres e iconos por IA.", "Genera nuevos strings y sugiere paletas de colores para la app."};
         tools << AITool{"auto_translation", "Automation", "AI Multi-Lang", "Traduce la app a 20+ idiomas.", "Traduce strings.xml manteniendo el formato XML intacto."};
         tools << AITool{"auto_smali_opt", "Automation", "Smali Optimizer", "Limpia y optimiza el código Smali.", "Elimina código muerto y optimiza registros en archivos .smali."};
         tools << AITool{"auto_final_report", "Automation", "Full Mod Report", "Documentación técnica final.", "Genera un reporte profesional en Markdown de todos los cambios realizados."};
+        tools << AITool{"auto_manifest_fix", "Automation", "Manifest Repair IA", "Corrige errores en el manifest tras la clonación.", "Busca conflictos de providers y llaves de API en el manifest y sugiere la corrección."};
+        tools << AITool{"auto_resource_opt", "Automation", "Resource Optimizer", "Optimiza y reduce el tamaño de los recursos.", "Analiza carpetas drawable y res en busca de archivos redundantes o no usados."};
+        tools << AITool{"auto_lib_patch", "Automation", "Library Auto-Patch", "Parchea librerías comunes (OkHttp, Retrofit).", "Busca lógicas de interceptores en librerías de red y genera bypasses estándar."};
+        tools << AITool{"auto_signature_kill", "Automation", "Global Sig-Killer", "Anula chequeos de firma en todo el código.", "Realiza un escaneo masivo de lógicas de comparación de firmas y genera parches smali."};
+        tools << AITool{"auto_firebase_map", "Automation", "Firebase Hijacker", "Identifica configuraciones de Firebase.", "Escanea google-services.json y strings.xml para mapear la infraestructura de Firebase."};
+
+        // --- CATEGORÍA 5: DEEP ANALYSIS & UTILITY (10) ---
+        tools << AITool{"deep_asset_mapper", "Deep Analysis", "Universal Asset Mapper", "Categoriza todos los assets del juego.", "Escanea carpetas assets/ y categoriza por tipo: Texturas, Modelos, Scripts, Sonidos."};
+        tools << AITool{"deep_string_xref", "Deep Analysis", "String X-Ref IA", "Cruza strings con su ubicación en el código.", "Busca el uso de strings críticos (llaves, URLs) y apunta al método Smali/C# exacto."};
+        tools << AITool{"deep_api_xref", "Deep Analysis", "API X-Ref Pro", "Cruza llamadas al sistema con la lógica de la app.", "Analiza el uso de APIs de Android (Telephony, SMS, GPS) y explica su propósito."};
+        tools << AITool{"deep_crypto_hunter", "Deep Analysis", "Crypto Engine Hunter", "Localiza motores de cifrado propietarios.", "Busca implementaciones personalizadas de algoritmos de cifrado en código nativo."};
+        tools << AITool{"deep_intent_mapper", "Deep Analysis", "Intent Flow Mapper", "Mapea todos los intents internos y externos.", "Analiza el flujo de comunicación entre actividades y servicios."};
+        tools << AITool{"deep_broadcast_map", "Deep Analysis", "Broadcast Watcher", "Identifica receptores de broadcast y sus acciones.", "Explica qué eventos del sistema escucha la app y cómo responde."};
+        tools << AITool{"deep_service_scan", "Deep Analysis", "Service Dissector", "Analiza todos los servicios en segundo plano.", "Explica la función de cada servicio y busca comportamientos de persistencia."};
+        tools << AITool{"deep_ui_reconstruct", "Deep Analysis", "UI Reconstructor", "Reconstruye la UI desde XML y código.", "Analiza layouts y lógica de vistas para explicar cómo se arma la interfaz."};
+        tools << AITool{"deep_network_flow", "Deep Analysis", "Network Request Flow", "Mapea el flujo de peticiones de red.", "Ordena cronológicamente las llamadas de red desde el inicio de la app."};
+        tools << AITool{"deep_persistence", "Deep Analysis", "Persistence Map", "Identifica dónde la app guarda sus datos.", "Mapea el uso de bases de datos SQLite, SharedPreferences y almacenamiento externo."};
 
         return tools;
     }

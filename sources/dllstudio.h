@@ -21,9 +21,9 @@ private slots:
 
 private:
     void setupUI();
+    void scanDlls();
+    void scanExtractedSource();
     QString m_ProjectPath;
-    QListWidget *m_DllList;
-    QTextBrowser *m_AiInsights;
 };
 
 #endif

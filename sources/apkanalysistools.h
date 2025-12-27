@@ -10,6 +10,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QPlainTextEdit>
+#include <QProcess>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QTableWidget>
