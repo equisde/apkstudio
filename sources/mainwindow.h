@@ -23,6 +23,7 @@
 #include "appmodstudio.h"
 #include "il2cppstudio.h"
 #include "nativesstudio.h"
+#include "dllstudio.h"
 
 class MainWindow : public QMainWindow
 {
@@ -37,6 +38,7 @@ public:
         Cloning,
         AppMod,
         NativeStudioSec,
+        DllStudioSec,
         AIStudio
     };
 
@@ -113,6 +115,7 @@ private:
     AppModStudio *m_AppModStudio;
     Il2CppStudio *m_Il2CppStudio;
     NativeStudio *m_NativeStudio;
+    DllStudio *m_DllStudio;
     
     // Status
     QLabel *m_StatusProjectInfo;

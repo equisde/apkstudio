@@ -114,6 +114,8 @@ set(SOURCES
     sources/appmodstudio.cpp
     sources/il2cppstudio.cpp
     sources/nativesstudio.cpp
+    sources/dllstudio.cpp
+    sources/universalreverser.cpp
     sources/sourcecodeedit.cpp
     sources/splashwindow.cpp
     sources/themedsyntaxhighlighter.cpp
@@ -156,6 +158,8 @@ set(HEADERS
     sources/appmodstudio.h
     sources/il2cppstudio.h
     sources/nativesstudio.h
+    sources/dllstudio.h
+    sources/universalreverser.h
     sources/sourcecodeedit.h
     sources/splashwindow.h
     sources/themedsyntaxhighlighter.h
