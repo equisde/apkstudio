@@ -39,26 +39,27 @@ void ApkRecompileWorker::applyAiPatches(const QString &soPath) {
 void ApkRecompileWorker::recompile() {
     emit started();
     
-    // 1. COMPILAR C# SI SE MODIFICÓ
-    if (QDir(m_Folder + "/csharp_src").exists()) {
-        emit progress(15, tr("Re-compiling Unity C# sources..."));
+    // 1. RECOMPILAR C# (Unity Managed DLLs)
+    QString csharpSrc = m_Folder + "/csharp_src";
+    if (QDir(csharpSrc).exists()) {
+        emit progress(10, tr("Detected C# modifications. Re-compiling Assembly-CSharp.dll..."));
+        
+        // Buscamos el compilador mcs (Mono) o similar
         QProcess mcs;
         QString outDll = m_Folder + "/assets/bin/Data/Managed/Assembly-CSharp.dll";
-        mcs.start("mcs", {"-target:library", "-out:" + outDll, "-recurse:" + m_Folder + "/csharp_src/*.cs"});
-        mcs.waitForFinished();
+        
+        // Comando para compilar todos los .cs de vuelta a DLL
+        mcs.start("mcs", {"-target:library", "-out:" + outDll, "-recurse:" + csharpSrc + "/*.cs"});
+        if (mcs.waitForFinished() && mcs.exitCode() == 0) {
+            emit progress(20, tr("C# re-compilation successful."));
+        } else {
+            qDebug() << "C# Build Error:" << mcs.readAllStandardError();
+            // Continuamos, pero informamos en logs
+        }
     }
 
-    // 2. COMPILAR NATIVO (JNI) SI EXISTE
-    if (QDir(m_Folder + "/jni").exists()) {
-        emit progress(30, tr("Building native libraries (NDK)..."));
-        QProcess ndk;
-        ndk.setWorkingDirectory(m_Folder);
-        ndk.start("ndk-build", {});
-        ndk.waitForFinished();
-    }
-
-    // 3. APLICAR PARCHES BINARIOS IA
-    emit progress(50, tr("Injecting AI Binary Patches..."));
+    // 2. APLICAR PARCHES BINARIOS IA (.so)
+    emit progress(30, tr("Applying AI Binary Patches..."));
     QStringList archs = {"arm64-v8a", "armeabi-v7a", "x86", "x86_64"};
     for (const auto &arch : archs) {
         applyAiPatches(m_Folder + "/lib/" + arch + "/libil2cpp.so");

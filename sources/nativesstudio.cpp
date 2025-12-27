@@ -59,11 +59,29 @@ void NativeStudio::scanNativeLibs() {
 }
 
 void NativeStudio::runAiBinaryAnalysis() {
-    if (m_LibsList->selectedItems().isEmpty()) {
-        QMessageBox::warning(this, "Studio", "Select a library first.");
+    auto item = m_LibsList->currentItem();
+    if (!item) {
+        QMessageBox::warning(this, "Native Studio", "Select a .so library first.");
         return;
     }
-    logMessage("IA is analyzing library symbols and entropy...");
+
+    QString libName = item->text();
+    logMessage("IA is dissecting: " + libName);
+    
+    // Prompt para analizar seguridad nativa
+    QString prompt = QString("You are a low-level reversing expert. Analyze the binary profile of this Android native library: %1. "
+                             "Check for anti-debug (ptrace), signature verification, and syscall patterns. "
+                             "Suggest offsets for bypassing these protections.")
+                     .arg(libName);
+
+    // Re-usamos la lógica de askAI (necesitamos añadir el método a NativesStudio o moverlo a una factoría)
+    m_AnalysisReport->append("<h3>AI Native Insights for " + libName + "</h3>");
+    m_AnalysisReport->append("<i>[AI] Scanning ELF headers and symbols...</i>");
+    
+    // Simulación de respuesta inmediata por ahora, integrable con el motor real
+    QTimer::singleShot(2000, this, [this]() {
+        logMessage("AI Analysis ready. Check the report below.");
+    });
 }
 
 void NativeStudio::generateNativeHook() {

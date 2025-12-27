@@ -59,5 +59,13 @@ void AppModStudio::applyUnlockPatch() {
 }
 
 void AppModStudio::aiSuggestModifications() {
-    m_AiLog->append("<i>[AI] Generating suggestions for application level modifications...</i>");
+    m_AiLog->append("<i>[AI] Scanning Java sources for privilege escalation and feature flags...</i>");
+    
+    QDir javaDir(m_ProjectPath + "/java_src");
+    if (!javaDir.exists()) {
+        m_AiLog->append("<span style='color: #f85149;'>Error: No Java sources found. Lifting failed.</span>");
+        return;
+    }
+
+    logMessage("Analyzing lifted Java code for premium feature toggles...");
 }
