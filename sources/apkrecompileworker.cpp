@@ -3,6 +3,7 @@
 #include <QProcess>
 
 void ApkRecompileWorker::recompile() {
+    emit started();
     emit progress(10, "Scanning for modified sub-components...");
 
     // 1. RECOMPILAR DLLs (Si hay cambios en C#)

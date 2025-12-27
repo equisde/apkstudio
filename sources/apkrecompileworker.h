@@ -15,6 +15,7 @@ private:
     QString m_ExtraArguments;
 signals:
     void finished();
+    void progress(int percent, const QString &message);
     void recompileFailed(const QString &folder);
     void recompileFinished(const QString &folder);
     void started();

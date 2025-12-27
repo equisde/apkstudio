@@ -17,16 +17,17 @@ void GameModStudio::downloadTools() {
     
     logMessage("Downloading dnSpy engine (Powered by IA)...", "warning");
     
-    QNetworkRequest req(QUrl(dnSpyUrl));
+    QNetworkRequest req;
+    req.setUrl(QUrl(dnSpyUrl));
     QNetworkReply *reply = m_NetworkManager->get(req);
     connect(reply, &QNetworkReply::finished, [=]() {
         if (reply->error() == QNetworkReply::NoError) {
             QFile f(toolsDir + "/dnSpy.zip");
-            f.open(QFile::WriteOnly);
-            f.write(reply->readAll());
-            f.close();
-            logMessage("dnSpy ready. Extracting binaries...", "success");
-            // Lógica de extracción aquí...
+            if (f.open(QFile::WriteOnly)) {
+                f.write(reply->readAll());
+                f.close();
+                logMessage("dnSpy ready. Extracting binaries...", "success");
+            }
         }
         reply->deleteLater();
     });
