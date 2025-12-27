@@ -113,6 +113,7 @@ set(SOURCES
     sources/cloningstudio.cpp
     sources/appmodstudio.cpp
     sources/il2cppstudio.cpp
+    sources/nativesstudio.cpp
     sources/sourcecodeedit.cpp
     sources/splashwindow.cpp
     sources/themedsyntaxhighlighter.cpp
@@ -154,6 +155,7 @@ set(HEADERS
     sources/cloningstudio.h
     sources/appmodstudio.h
     sources/il2cppstudio.h
+    sources/nativesstudio.h
     sources/sourcecodeedit.h
     sources/splashwindow.h
     sources/themedsyntaxhighlighter.h

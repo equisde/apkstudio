@@ -35,7 +35,13 @@ public:
 
         // --- CATEGORÍA: IL2CPP & NATIVE ---
         tools << AITool{"native_offset_fix", "Il2Cpp", "RVA Offset Fixer", "Corrige direcciones de memoria para parcheo manual.", "Calcula el offset real de archivo basado en el VA del dump.", ".so"};
-        tools << AITool{"native_mod_menu", "Il2Cpp", "Mod Menu Architect", "Genera el código C++ para un menú flotante.", "Crea un archivo modmenu.cpp basado en los offsets encontrados.", ".so"};
+        tools << AITool{"auto_mod_report", "Automation", "Final Mod Report", "Resumen de todos los cambios.", "Genera un archivo MD con la documentación técnica de todo el modding realizado."};
+        
+        // --- CATEGORÍA: QUANTUM REVERSING (New) ---
+        tools << AITool{"rev_elf_dissect", "Native", "AI ELF Dissector", "Analiza la estructura del binario nativo.", "Escanea la tabla de símbolos y busca funciones de seguridad ocultas."};
+        tools << AITool{"rev_syscall_map", "Native", "Syscall Tracer IA", "Mapea llamadas al sistema.", "Identifica dónde el código nativo interactúa con el kernel (archivos, red)."};
+        tools << AITool{"rev_csharp_logic", "Unity", "C# Logic Architect", "Analiza el flujo de datos en C#.", "Busca el 'GameManager' y explica el ciclo de vida del juego."};
+        tools << AITool{"rev_proto_reconstruct", "Network", "Protobuf Rebuilder", "Reconstruye mensajes Protobuf.", "Analiza los buffers serializados y genera la definición .proto."};
 
         return tools;
     }

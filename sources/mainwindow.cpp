@@ -140,6 +140,7 @@ void MainWindow::setupActivityBar()
     addAct(Security, ":/icons/icons8/icons8-software-installer-48.png", "Security");
     addAct(Cloning, ":/icons/icons8/icons8-android-os-48.png", "Cloner");
     addAct(AppMod, ":/icons/fugue/gear.png", "App Modification");
+    addAct(NativeStudioSec, ":/icons/icons8/icons8-hammer-48.png", "Native Studio");
     addAct(AIStudio, ":/icons/icons8/icons8-gear-48.png", "AI Agent");
 
     connect(m_ActivityGroup, &QActionGroup::triggered, this, [this](QAction *a) {
@@ -178,6 +179,9 @@ void MainWindow::setupSidebars()
     m_AppModStudio = new AppModStudio("");
     m_SidebarStack->addWidget(m_AppModStudio);
 
+    m_NativeStudio = new NativeStudio("");
+    m_SidebarStack->addWidget(m_NativeStudio);
+
     // 6. AI Agent Console
     m_AIStudioWidget = new AIConsoleWidget();
     m_SidebarStack->addWidget(m_AIStudioWidget);
@@ -198,6 +202,7 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     if (m_SecurityHub) m_SecurityHub->setProjectPath(path);
     if (m_CloningStudio) m_CloningStudio->setProjectPath(path);
     if (m_AppModStudio) m_AppModStudio->setProjectPath(path);
+    if (m_NativeStudio) m_NativeStudio->setProjectPath(path);
     if (m_AIStudioWidget) m_AIStudioWidget->setProjectPath(path);
 
     // 3. Actualizar Explorador
