@@ -84,7 +84,7 @@ void Il2CppStudio::loadDumpFile() {
 void Il2CppStudio::runAiTool() {
     auto item = m_ToolsList->currentItem();
     if(!item || m_DumpContent.isEmpty()) {
-        QMessageBox::warning(this, "Studio", "Select a tool and load a dump first.");
+        QMessageBox::warning(this, "Studio", "Load dump.cs first.");
         return;
     }
 
@@ -93,22 +93,21 @@ void Il2CppStudio::runAiTool() {
     for(const auto &t : m_Tools) if(t.id == id) selectedTool = t;
 
     logMessage("IA analyzing: " + selectedTool.name);
-    QString prompt = QString("You are a professional game modder. Analyze this dump.cs snippet and find the exact offset for: %1. "
-                             "Return ONLY a JSON array of patches like this: [{\"offset\": \"0x123456\", \"hex\": \"0000A0E31EFF2FE1\"}]")
-                     .arg(selectedTool.aiPrompt);
     
-    // Incluir fragmentos relevantes del dump (por ahora simplificado)
-    prompt += "\n\nDump Context:\n" + m_DumpContent.mid(0, 15000);
+    // Tomar fragmentos clave del dump para no exceder límites
+    QString context = m_DumpContent.mid(0, 20000); 
+    QString prompt = QString("As an Android RE expert, analyze this Il2Cpp dump. "
+                             "Task: %1. Return ONLY a JSON array of offsets and hex patches.")
+                     .arg(selectedTool.aiPrompt);
 
-    askAI(prompt, [this](const QString &res) {
-        m_AnalysisReport->append("<h3>AI Suggested Patches</h3><pre>" + res + "</pre>");
+    askAI(prompt + "\n\nDump:\n" + context, [this](const QString &res) {
+        m_AnalysisReport->append("<h3>Results</h3><pre>" + res + "</pre>");
         
-        // Guardar parches para el recompilador
         QFile f(m_ProjectPath + "/AI_BINARY_PATCHES.json");
         if(f.open(QFile::WriteOnly)) {
             f.write(res.toUtf8());
             f.close();
-            logMessage("Binary patches saved! They will be applied during APK Build.");
+            logMessage("Patches saved to AI_BINARY_PATCHES.json");
         }
     });
 }
