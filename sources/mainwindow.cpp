@@ -231,7 +231,10 @@ void MainWindow::analyzeProjectContext(const QString &path) {
     
     // 4. DISPARAR DESCOMPILACIÓN UNIVERSAL (IA Powered)
     auto reverser = new UniversalReverser(path, this);
-    connect(reverser, &UniversalReverser::progress, this, &MainWindow::updateStatusBar);
+    connect(reverser, &UniversalReverser::progress, this, [this](int percent, const QString &msg) {
+        Q_UNUSED(percent);
+        updateStatusBar(msg);
+    });
     reverser->autoDecompileAll(); // Ejecución asíncrona interna sugerida
 
     // Generar Reportes MD Automáticos
