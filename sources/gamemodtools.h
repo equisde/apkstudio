@@ -27,6 +27,7 @@ class GameModStudio : public QWidget
     Q_OBJECT
 public:
     explicit GameModStudio(const QString &projectPath, QWidget *parent = nullptr);
+    void setProjectPath(const QString &path);
 
 private slots:
     void downloadTools();
