@@ -837,7 +837,7 @@ bool ToolDownloadWorker::installMsi(const QString &msiPath, const QString &insta
     QProcess process;
     
     // Use QDir::toNativeSeparators to ensure proper path format for Windows
-    QString nativeMsiPath = QDir::toNativeSeparators(msiPath);
+    QString native msiPath = QDir::toNativeSeparators(msiPath);
     
     // For Java, we need admin privileges. Use PowerShell to elevate msiexec
     if (m_Tool == Java) {
@@ -846,13 +846,13 @@ bool ToolDownloadWorker::installMsi(const QString &msiPath, const QString &insta
 #endif
         
         // Build msiexec command with arguments
-        QString msiexecCmd = QString("msiexec.exe /i \"%1\" /qn /norestart").arg(nativeMsiPath);
+        QString msiexecCmd = QString("msiexec.exe /i \"%1\" /qn /norestart").arg(native msiPath);
         
         // Use PowerShell to start msiexec with elevation (shows UAC prompt)
         // Start-Process with -Verb RunAs will show UAC dialog
         QStringList psArgs;
         psArgs << "-Command";
-        psArgs << QString("Start-Process -FilePath 'msiexec.exe' -ArgumentList '/i', '%1', '/qn', '/norestart' -Verb RunAs -Wait -PassThru | ForEach-Object { exit $_.ExitCode }").arg(nativeMsiPath);
+        psArgs << QString("Start-Process -FilePath 'msiexec.exe' -ArgumentList '/i', '%1', '/qn', '/norestart' -Verb RunAs -Wait -PassThru | ForEach-Object { exit $_.ExitCode }").arg(native msiPath);
         
 #ifdef QT_DEBUG
         qDebug() << "[installMsi] Running PowerShell with elevation...";
@@ -863,7 +863,7 @@ bool ToolDownloadWorker::installMsi(const QString &msiPath, const QString &insta
     } else {
         // For other tools, try without elevation first
         QStringList args;
-        args << "/i" << nativeMsiPath;
+        args << "/i" << native msiPath;
         args << "/qn"; // Quiet, no UI
         args << "/norestart"; // Don't restart
         
