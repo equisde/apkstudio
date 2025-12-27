@@ -7,6 +7,7 @@
 #include "imageviewerwidget.h"
 #include "markdownviewerwidget.h"
 #include "hexedit.h"
+#include "universalreverser.h"
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
