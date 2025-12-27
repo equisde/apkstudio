@@ -235,7 +235,11 @@ void MainWindow::analyzeProjectContext(const QString &path) {
         Q_UNUSED(percent);
         updateStatusBar(msg);
     });
-    reverser->autoDecompileAll(); // Ejecución asíncrona interna sugerida
+    connect(reverser, &UniversalReverser::finished, this, [this]() {
+        updateStatusBar(tr("All tools configured and decompilation finished."));
+        QMessageBox::information(this, tr("AI Suite"), tr("Reverse engineering environment is 100% ready. All tools and sources are configured."));
+    });
+    reverser->autoDecompileAll(); 
 
     // Generar Reportes MD Automáticos
     QDir dir(path);

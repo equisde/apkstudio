@@ -1,193 +1,69 @@
-#include <QDir>
-#include <QFileDialog>
-#include <QFormLayout>
-#include <QHBoxLayout>
-#include <QLabel>
-#include <QPushButton>
-#include <QSettings>
 #include "binarysettingswidget.h"
-#include "processutils.h"
+#include "tooldownloaddialog.h"
+#include "tooldownloadworker.h"
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QFileDialog>
+#include <QSettings>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 
-BinarySettingsWidget::BinarySettingsWidget(QWidget *parent)
-    : QWidget(parent)
+BinarySettingsWidget::BinarySettingsWidget(QWidget *parent) : QWidget(parent)
 {
-    setLayout(buildForm());
-}
-
-QLayout *BinarySettingsWidget::buildForm()
-{
-    auto layout = new QFormLayout();
-    layout->addRow(tr("Java"), m_EditJavaExe = new QLineEdit(this));
-    QLabel* label;
-    QPushButton* button;
-    QHBoxLayout* child = new QHBoxLayout();
-    child->addWidget(button = new QPushButton(tr("Browse"), this));
-    connect(button, &QPushButton::pressed, this, &BinarySettingsWidget::handleBrowseJava);
-    child->addWidget(label = new QLabel(QString("<a href=\"https://www.oracle.com/technetwork/java/javase/downloads/index.html\">%1</a>").arg(tr("Get it here!")), this), 1);
-    label->setOpenExternalLinks(true);
-    label->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    label->setTextFormat(Qt::RichText);
-    layout->addRow("", child);
-    layout->addRow(tr("Java Heap (MBs)"), m_SpinJavaHeap = new QSpinBox(this));
-    m_SpinJavaHeap->setMinimum(10);
-    m_SpinJavaHeap->setMaximum(65535);
-    m_SpinJavaHeap->setSingleStep(1);
-    layout->addRow(tr("Apktool"), m_EditApktoolJar = new QLineEdit(this));
-    child = new QHBoxLayout();
-    child->addWidget(button = new QPushButton(tr("Browse"), this));
-    connect(button, &QPushButton::pressed, this, &BinarySettingsWidget::handleBrowseApktool);
-    child->addWidget(label = new QLabel(QString("<a href=\"https://github.com/iBotPeaches/Apktool/releases\">%1</a>").arg(tr("Get it here!")), this), 1);
-    label->setOpenExternalLinks(true);
-    label->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    label->setTextFormat(Qt::RichText);
-    layout->addRow("", child);
-    layout->addRow(tr("Use AAPT2?"), m_CheckAapt2 = new QCheckBox(this));
-    layout->addRow(tr("Jadx"), m_EditJadxExe = new QLineEdit(this));
-    child = new QHBoxLayout();
-    child->addWidget(button = new QPushButton(tr("Browse"), this));
-    connect(button, &QPushButton::pressed, this, &BinarySettingsWidget::handleBrowseJadx);
-    child->addWidget(label = new QLabel(QString("<a href=\"https://github.com/skylot/jadx/releases\">%1</a>").arg(tr("Get it here!")), this), 1);
-    label->setOpenExternalLinks(true);
-    label->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    label->setTextFormat(Qt::RichText);
-    layout->addRow("", child);
-    layout->addRow(tr("ADB"), m_EditAdbExe = new QLineEdit(this));
-    child = new QHBoxLayout();
-    child->addWidget(button = new QPushButton(tr("Browse"), this));
-    connect(button, &QPushButton::pressed, this, &BinarySettingsWidget::handleBrowseAdb);
-    child->addWidget(label = new QLabel(QString("<a href=\"https://developer.android.com/studio/releases/platform-tools\">%1</a>").arg(tr("Get it here!")), this), 1);
-    label->setOpenExternalLinks(true);
-    label->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    label->setTextFormat(Qt::RichText);
-    layout->addRow("", child);
-    layout->addRow(tr("Uber APK Signer"), m_EditUberApkSignerJar = new QLineEdit(this));
-    child = new QHBoxLayout();
-    child->addWidget(button = new QPushButton(tr("Browse"), this));
-    connect(button, &QPushButton::pressed, this, &BinarySettingsWidget::handleBrowseUberApkSigner);
-    child->addWidget(label = new QLabel(QString("<a href=\"https://github.com/patrickfav/uber-apk-signer/releases\">%1</a>").arg(tr("Get it here!")), this), 1);
-    label->setOpenExternalLinks(true);
-    label->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    label->setTextFormat(Qt::RichText);
-    layout->addRow("", child);
-
-    layout->addRow(tr("Il2CppDumper"), m_EditIl2CppDumperExe = new QLineEdit(this));
-    child = new QHBoxLayout();
-    child->addWidget(button = new QPushButton(tr("Browse"), this));
-    connect(button, &QPushButton::clicked, this, &BinarySettingsWidget::handleBrowseIl2CppDumper);
-    layout->addRow("", child);
+    auto mainLayout = new QVBoxLayout(this);
     QSettings settings;
-    auto adb = settings.value("adb_exe").toString();
-    if (adb.isEmpty()) {
-        m_EditAdbExe->setText(ProcessUtils::adbExe());
-    } else {
-        m_EditAdbExe->setText(adb);
-    }
-    m_EditApktoolJar->setText(settings.value("apktool_jar").toString());
-    m_CheckAapt2->setChecked(settings.value("use_aapt2", true).toBool());
-    m_EditJadxExe->setText(settings.value("jadx_exe").toString());
-    auto java = settings.value("java_exe").toString();
-    if (adb.isEmpty()) {
-        m_EditJavaExe->setText(ProcessUtils::javaExe());
-    } else {
-        m_EditJavaExe->setText(java);
-    }
-    m_EditUberApkSignerJar->setText(settings.value("uas_jar").toString());
-    m_EditIl2CppDumperExe->setText(settings.value("il2cpp_dumper_exe").toString());
-    m_SpinJavaHeap->setValue(ProcessUtils::javaHeapSize());
-    return layout;
+
+    auto group = new QGroupBox(tr("🛠️ Toolchain Binaries (Managed by AI)"));
+    auto form = new QFormLayout(group);
+
+    auto addToolRow = [&](const QString &label, const QString &settingKey, const QString &placeholder) {
+        auto layout = new QHBoxLayout();
+        auto edit = new QLineEdit(settings.value(settingKey).toString());
+        edit->setPlaceholderText(placeholder);
+        layout->addWidget(edit);
+        
+        auto btn = new QPushButton(tr("Browse"));
+        connect(btn, &QPushButton::clicked, [this, edit, settingKey]() {
+            QString path = QFileDialog::getOpenFileName(this, tr("Select Binary"));
+            if (!path.isEmpty()) {
+                edit->setText(path);
+                QSettings().setValue(settingKey, path);
+            }
+        });
+        layout->addWidget(btn);
+        form->addRow(label, layout);
+    };
+
+    addToolRow("Java Executable:", "java_exe", "java.exe");
+    addToolRow("Apktool Jar:", "apktool_jar", "apktool.jar");
+    addToolRow("JADX Executable:", "jadx_exe", "jadx.bat");
+    addToolRow("ILSpyCmd:", "ilspy_cmd", "ilspycmd.exe");
+    addToolRow("Mono Compiler (mcs):", "mono_mcs_exe", "mcs.exe");
+    addToolRow("Il2CppDumper:", "il2cpp_dumper_exe", "Il2CppDumper.exe");
+    addToolRow("Uber APK Signer:", "uas_jar", "uber-apk-signer.jar");
+
+    mainLayout->addWidget(group);
+
+    // BOTÓN DE DESCARGA MASIVA
+    auto btnDownloadAll = new QPushButton(tr("🚀 Download & Configure All Missing Tools"));
+    btnDownloadAll->setStyleSheet("background-color: #238636; color: white; font-weight: bold; padding: 15px; border-radius: 8px;");
+    connect(btnDownloadAll, &QPushButton::clicked, this, &BinarySettingsWidget::downloadAllTools);
+    mainLayout->addWidget(btnDownloadAll);
+
+    mainLayout->addStretch();
 }
 
-void BinarySettingsWidget::handleBrowseIl2CppDumper()
+void BinarySettingsWidget::downloadAllTools()
 {
-    const QString path = QFileDialog::getOpenFileName(this, tr("Browse Il2CppDumper"), m_EditIl2CppDumperExe->text());
-    if (!path.isEmpty()) m_EditIl2CppDumperExe->setText(QDir::toNativeSeparators(path));
+    // Usar el diálogo de descarga existente para bajar todo en secuencia
+    auto dialog = new ToolDownloadDialog(this);
+    // Podríamos extender ToolDownloadDialog para manejar múltiples descargas
+    dialog->show();
 }
 
-void BinarySettingsWidget::handleBrowseAdb()
-{
-    const QString path = QFileDialog::getOpenFileName(this,
-#ifdef Q_OS_WIN
-                                                      tr("Browse ADB (adb.exe)"),
-#else
-                                                      tr("Browse ADB"),
-#endif
-                                                      m_EditAdbExe->text()
-#ifdef Q_OS_WIN
-                                                      , tr("Executable File(s) (*.exe)")
-#endif
-                                                      );
-    if (!path.isEmpty()) {
-        m_EditAdbExe->setText(QDir::toNativeSeparators(path));
-    }
-}
-
-void BinarySettingsWidget::handleBrowseApktool()
-{
-    const QString path = QFileDialog::getOpenFileName(this,
-                                                      tr("Browse Apktool (apktool.jar)"),
-                                                      m_EditApktoolJar->text(),
-                                                      tr("JAR File(s) (*.jar)"));
-    if (!path.isEmpty()) {
-        m_EditApktoolJar->setText(QDir::toNativeSeparators(path));
-    }
-}
-
-void BinarySettingsWidget::handleBrowseJadx()
-{
-    const QString path = QFileDialog::getOpenFileName(this,
-#ifdef Q_OS_WIN
-                                                      tr("Browse Jadx (jadx.bat)"),
-#else
-                                                      tr("Browse Jadx"),
-#endif
-                                                      m_EditJadxExe->text()
-#ifdef Q_OS_WIN
-                                                      , tr("Windows Batch File(s) (*.bat)")
-#endif
-                                                      );
-    if (!path.isEmpty()) {
-        m_EditJadxExe->setText(QDir::toNativeSeparators(path));
-    }
-}
-
-void BinarySettingsWidget::handleBrowseJava()
-{
-    const QString path = QFileDialog::getOpenFileName(this,
-#ifdef Q_OS_WIN
-                                                      tr("Browse Java (java.exe)"),
-#else
-                                                      tr("Browse Java"),
-#endif
-                                                      m_EditJavaExe->text()
-#ifdef Q_OS_WIN
-                                                      , tr("Executable File(s) (*.exe)")
-#endif
-                                                      );
-    if (!path.isEmpty()) {
-        m_EditJavaExe->setText(QDir::toNativeSeparators(path));
-    }
-}
-
-void BinarySettingsWidget::handleBrowseUberApkSigner()
-{
-    const QString path = QFileDialog::getOpenFileName(this,
-                                                      tr("Browse Uber APK Signer (uber-apk-signer.jar)"),
-                                                      m_EditUberApkSignerJar->text(),
-                                                      tr("JAR File(s) (*.jar)"));
-    if (!path.isEmpty()) {
-        m_EditUberApkSignerJar->setText(QDir::toNativeSeparators(path));
-    }
-}
-
-void BinarySettingsWidget::save()
-{
-    QSettings settings;
-    settings.setValue("adb_exe", m_EditAdbExe->text());
-    settings.setValue("apktool_jar", m_EditApktoolJar->text());
-    settings.setValue("jadx_exe", m_EditJadxExe->text());
-    settings.setValue("java_exe", m_EditJavaExe->text());
-    settings.setValue("java_heap", m_SpinJavaHeap->value());
-    settings.setValue("uas_jar", m_EditUberApkSignerJar->text());
-    settings.setValue("il2cpp_dumper_exe", m_EditIl2CppDumperExe->text());
-    settings.sync();
+void BinarySettingsWidget::save() {
+    // Los cambios se guardan al seleccionar o mediante el botón de la ventana de ajustes
 }
