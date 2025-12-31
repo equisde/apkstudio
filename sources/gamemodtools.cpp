@@ -470,10 +470,222 @@ void GameModStudio::analyzeWithAI()
     QSettings settings;
     QString model = settings.value("ai_model", "gemini-2.0-flash-exp").toString();
     logMessage("Consulting AI Engine (" + model + ")...", "info");
+    logMessage("Collecting game source code for analysis...", "info");
 
-    askAI("Analyze this game project and identify potential modding entries.", [this](const QString &res) {
+    // Collect game context from multiple sources
+    QString gameContext;
+    QString engineType = "Unknown";
+    int filesAnalyzed = 0;
+    
+    // Detect engine type
+    if (QFile::exists(m_ProjectPath + "/assets/bin/Data/Managed/Assembly-CSharp.dll") ||
+        QFile::exists(m_ProjectPath + "/lib/arm64-v8a/libil2cpp.so") ||
+        QFile::exists(m_ProjectPath + "/lib/armeabi-v7a/libil2cpp.so")) {
+        engineType = "Unity";
+    } else if (QFile::exists(m_ProjectPath + "/assets/main.pak") ||
+               QFile::exists(m_ProjectPath + "/lib/arm64-v8a/libUE4.so")) {
+        engineType = "Unreal Engine";
+    } else if (QFile::exists(m_ProjectPath + "/assets/game.dex") ||
+               QFile::exists(m_ProjectPath + "/assets/game.unitypack") == false) {
+        engineType = "Native Android/Java";
+    }
+    
+    gameContext += QString("## Game Information\n");
+    gameContext += QString("- **Engine**: %1\n").arg(engineType);
+    gameContext += QString("- **Project Path**: %1\n\n").arg(m_ProjectPath);
+
+    // 1. Try to read IL2CPP dump.cs first (most common for Unity IL2CPP games)
+    QString dumpPath = m_ProjectPath + "/dump/dump.cs";
+    if (QFile::exists(dumpPath)) {
+        QFile dumpFile(dumpPath);
+        if (dumpFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString dumpContent = QString::fromUtf8(dumpFile.readAll());
+            dumpFile.close();
+            
+            // Extract relevant classes (look for game-related classes)
+            QStringList relevantClasses;
+            QStringList lines = dumpContent.split('\n');
+            QString currentClass;
+            QStringList currentClassContent;
+            bool inRelevantClass = false;
+            
+            QStringList gameKeywords = {"Player", "Currency", "Gold", "Coin", "Gem", "Diamond", 
+                                         "Health", "Damage", "Attack", "Speed", "Energy", "Stamina",
+                                         "Inventory", "Item", "Shop", "Store", "Purchase", "Reward",
+                                         "Score", "Level", "Experience", "XP", "Skill", "Upgrade",
+                                         "Weapon", "Armor", "Stats", "Character", "Hero", "Unit",
+                                         "Resource", "Timer", "Cooldown", "Boost", "Power", "Mana",
+                                         "GameManager", "DataManager", "SaveManager", "PlayerData",
+                                         "UserData", "ProfileData", "WalletManager", "CurrencyManager"};
+            
+            for (const QString &line : lines) {
+                // Detect class declaration
+                if (line.contains("public class ") || line.contains("public static class ") ||
+                    line.contains("public sealed class ")) {
+                    // Save previous class if relevant
+                    if (inRelevantClass && !currentClassContent.isEmpty()) {
+                        relevantClasses.append(currentClassContent.join("\n"));
+                        filesAnalyzed++;
+                    }
+                    
+                    // Check if new class is relevant
+                    currentClass = line;
+                    currentClassContent.clear();
+                    inRelevantClass = false;
+                    
+                    for (const QString &keyword : gameKeywords) {
+                        if (line.contains(keyword, Qt::CaseInsensitive)) {
+                            inRelevantClass = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (inRelevantClass) {
+                    currentClassContent.append(line);
+                    // Limit class content to avoid too large prompts
+                    if (currentClassContent.size() > 100) {
+                        currentClassContent.append("    // ... (truncated)");
+                        inRelevantClass = false;
+                    }
+                }
+            }
+            
+            // Add last class if relevant
+            if (inRelevantClass && !currentClassContent.isEmpty()) {
+                relevantClasses.append(currentClassContent.join("\n"));
+                filesAnalyzed++;
+            }
+            
+            if (!relevantClasses.isEmpty()) {
+                gameContext += "## IL2CPP Dump - Relevant Game Classes\n\n";
+                // Limit to first 15 classes to avoid token limits
+                int classCount = qMin(relevantClasses.size(), 15);
+                for (int i = 0; i < classCount; i++) {
+                    gameContext += "```csharp\n" + relevantClasses[i] + "\n```\n\n";
+                }
+                logMessage(QString("Found %1 relevant game classes in dump.cs").arg(relevantClasses.size()), "info");
+            }
+        }
+    }
+    
+    // 2. Try to read decompiled C# source files
+    QDir csharpDir(m_ProjectPath + "/csharp_src");
+    if (csharpDir.exists()) {
+        QStringList csFiles = csharpDir.entryList(QStringList() << "*.cs", QDir::Files, QDir::Name);
+        
+        QStringList gameKeywords = {"Player", "Currency", "Gold", "Coin", "Gem", "Diamond", 
+                                     "Health", "Damage", "Inventory", "Item", "Shop", "Score",
+                                     "GameManager", "DataManager", "SaveManager", "Wallet"};
+        
+        gameContext += "## Decompiled C# Source Files\n\n";
+        int filesRead = 0;
+        
+        for (const QString &csFile : csFiles) {
+            bool isRelevant = false;
+            for (const QString &keyword : gameKeywords) {
+                if (csFile.contains(keyword, Qt::CaseInsensitive)) {
+                    isRelevant = true;
+                    break;
+                }
+            }
+            
+            if (isRelevant && filesRead < 10) {
+                QFile file(csharpDir.filePath(csFile));
+                if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                    QString content = QString::fromUtf8(file.readAll());
+                    file.close();
+                    
+                    // Limit file content
+                    if (content.length() > 5000) {
+                        content = content.left(5000) + "\n// ... (truncated)";
+                    }
+                    
+                    gameContext += QString("### %1\n```csharp\n%2\n```\n\n").arg(csFile, content);
+                    filesRead++;
+                    filesAnalyzed++;
+                }
+            }
+        }
+    }
+    
+    // 3. Read SharedPreferences/PlayerPrefs keys if available
+    QDir sharedPrefsDir(m_ProjectPath + "/shared_prefs");
+    if (sharedPrefsDir.exists()) {
+        QStringList xmlFiles = sharedPrefsDir.entryList(QStringList() << "*.xml", QDir::Files);
+        if (!xmlFiles.isEmpty()) {
+            gameContext += "## SharedPreferences (Player Save Data Keys)\n\n";
+            for (const QString &xmlFile : xmlFiles) {
+                QFile file(sharedPrefsDir.filePath(xmlFile));
+                if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                    QString content = QString::fromUtf8(file.readAll());
+                    file.close();
+                    if (content.length() > 3000) {
+                        content = content.left(3000) + "\n<!-- truncated -->";
+                    }
+                    gameContext += QString("### %1\n```xml\n%2\n```\n\n").arg(xmlFile, content);
+                    filesAnalyzed++;
+                }
+            }
+        }
+    }
+    
+    // 4. Read AndroidManifest for package name and permissions
+    QString manifestPath = m_ProjectPath + "/AndroidManifest.xml";
+    if (QFile::exists(manifestPath)) {
+        QFile manifestFile(manifestPath);
+        if (manifestFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString manifestContent = QString::fromUtf8(manifestFile.readAll());
+            manifestFile.close();
+            
+            // Extract package name
+            QRegularExpression pkgRegex("package=\"([^\"]+)\"");
+            QRegularExpressionMatch match = pkgRegex.match(manifestContent);
+            if (match.hasMatch()) {
+                gameContext += QString("- **Package Name**: %1\n").arg(match.captured(1));
+            }
+        }
+    }
+    
+    if (filesAnalyzed == 0) {
+        logMessage("No game source code found! Run 'Decompile' first.", "error");
+        m_AIResponseView->setMarkdown("## ❌ No Source Code Available\n\n"
+            "Please run **Decompile** first to extract the game's source code.\n\n"
+            "### Steps:\n"
+            "1. Click **Verify** to check available tools\n"
+            "2. Click **Decompile** to extract game code\n"
+            "3. Then click **AI Analyze** again");
+        return;
+    }
+    
+    logMessage(QString("Analyzing %1 game files...").arg(filesAnalyzed), "info");
+    
+    // Build comprehensive prompt
+    QString prompt = QString(
+        "You are a game modding expert analyzing an Android game. Based on the source code provided below, "
+        "identify ALL modifiable game values and potential modding entry points.\n\n"
+        "**Your task:**\n"
+        "1. Find classes/methods related to: currencies (gold, gems, coins, diamonds), player stats (health, damage, speed), "
+        "inventory items, in-app purchases, timers/cooldowns, energy systems, upgrade costs\n"
+        "2. For each finding, provide:\n"
+        "   - Class name and method/field name\n"
+        "   - Current value type (int, float, etc.)\n"
+        "   - Suggested modification (e.g., 'Change return value to 999999')\n"
+        "   - Risk level (Safe/Medium/Risky for anti-cheat detection)\n\n"
+        "3. Provide specific Smali/C# code modifications when possible\n\n"
+        "4. Group findings by category:\n"
+        "   - 💰 Currency Mods\n"
+        "   - ❤️ Health/Stats Mods\n"
+        "   - ⚔️ Damage/Attack Mods\n"
+        "   - 🎒 Inventory Mods\n"
+        "   - ⏱️ Timer/Cooldown Mods\n"
+        "   - 🛒 IAP/Shop Mods\n\n"
+        "**Game Source Code:**\n\n%1"
+    ).arg(gameContext);
+    
+    askAI(prompt, [this](const QString &res) {
         m_AIResponseView->setMarkdown(res);
-        logMessage("AI Analysis ready.", "success");
+        logMessage("AI Analysis complete!", "success");
     });
 }
 
