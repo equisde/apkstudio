@@ -24,6 +24,7 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSplitter>
 #include <QStandardPaths>
@@ -4360,7 +4361,7 @@ QString ModMenuCodeGenerator::generateMenuToggle(const ModTarget &target)
 // =============================================================================
 
 ModMenuProjectDialog::ModMenuProjectDialog(const QString &projectPath, const QList<ModOption> &mods, QWidget *parent)
-    : QDialog(parent), m_ProjectPath(projectPath), m_Mods(mods), m_DownloadsRemaining(0)
+    : QDialog(parent), m_ProjectPath(projectPath), m_Mods(mods), m_DownloadsRemaining(0), m_BuildProcess(nullptr)
 {
     setWindowTitle(tr("🎮 Mod Menu Project Generator"));
     setMinimumSize(1100, 750);
@@ -4396,29 +4397,52 @@ void ModMenuProjectDialog::setupUI()
     // Dependencies row
     auto depsLayout = new QHBoxLayout();
     
-    m_DownloadDepsBtn = new QPushButton(tr("📥 Download Dependencies (ImGui + Dobby)"));
-    m_DownloadDepsBtn->setStyleSheet("background: #1f6feb; color: white; padding: 10px 15px; font-weight: bold;");
+    m_DownloadDepsBtn = new QPushButton(tr("📥 Download ImGui + Dobby"));
+    m_DownloadDepsBtn->setStyleSheet("background: #1f6feb; color: white; padding: 8px 12px; font-weight: bold;");
     m_DownloadDepsBtn->setToolTip(tr("Download ImGui and Dobby libraries automatically from GitHub"));
     depsLayout->addWidget(m_DownloadDepsBtn);
     
-    m_AutoDownloadCheck = new QCheckBox(tr("Auto-download with project"));
+    m_DownloadNDKBtn = new QPushButton(tr("📥 Download Android NDK"));
+    m_DownloadNDKBtn->setStyleSheet("background: #8957e5; color: white; padding: 8px 12px; font-weight: bold;");
+    m_DownloadNDKBtn->setToolTip(tr("Download Android NDK for compiling native code"));
+    depsLayout->addWidget(m_DownloadNDKBtn);
+    
+    m_AutoDownloadCheck = new QCheckBox(tr("Auto-download"));
     m_AutoDownloadCheck->setStyleSheet("color: #8b949e;");
     m_AutoDownloadCheck->setChecked(true);
     depsLayout->addWidget(m_AutoDownloadCheck);
     
+    depsLayout->addStretch();
+    mainLayout->addLayout(depsLayout);
+    
+    // Status row
+    auto statusRow = new QHBoxLayout();
+    
     // Dependency status
     auto depsStatusLabel = new QLabel();
     if (checkDependencies()) {
-        depsStatusLabel->setText(tr("✅ Dependencies found"));
+        depsStatusLabel->setText(tr("✅ ImGui/Dobby OK"));
         depsStatusLabel->setStyleSheet("color: #7ee787;");
     } else {
-        depsStatusLabel->setText(tr("⚠️ Dependencies missing - click Download"));
+        depsStatusLabel->setText(tr("⚠️ ImGui/Dobby missing"));
         depsStatusLabel->setStyleSheet("color: #d29922;");
     }
-    depsLayout->addWidget(depsStatusLabel);
+    statusRow->addWidget(depsStatusLabel);
     
-    depsLayout->addStretch();
-    mainLayout->addLayout(depsLayout);
+    // NDK status
+    m_NDKStatusLabel = new QLabel();
+    m_NDKPath = findNDKPath();
+    if (!m_NDKPath.isEmpty()) {
+        m_NDKStatusLabel->setText(tr("✅ NDK found"));
+        m_NDKStatusLabel->setStyleSheet("color: #7ee787;");
+    } else {
+        m_NDKStatusLabel->setText(tr("⚠️ NDK not found"));
+        m_NDKStatusLabel->setStyleSheet("color: #d29922;");
+    }
+    statusRow->addWidget(m_NDKStatusLabel);
+    
+    statusRow->addStretch();
+    mainLayout->addLayout(statusRow);
     
     // Options row
     auto optionsLayout = new QHBoxLayout();
@@ -4435,6 +4459,12 @@ void ModMenuProjectDialog::setupUI()
     m_GenerateBtn = new QPushButton(tr("🚀 Generate Project"));
     m_GenerateBtn->setStyleSheet("background: #238636; color: white; padding: 10px 20px; font-weight: bold;");
     optionsLayout->addWidget(m_GenerateBtn);
+    
+    m_BuildBtn = new QPushButton(tr("🔨 Build Mod"));
+    m_BuildBtn->setStyleSheet("background: #da3633; color: white; padding: 10px 20px; font-weight: bold;");
+    m_BuildBtn->setEnabled(false);
+    m_BuildBtn->setToolTip(tr("Compile the mod menu using Android NDK"));
+    optionsLayout->addWidget(m_BuildBtn);
     
     optionsLayout->addStretch();
     mainLayout->addLayout(optionsLayout);
@@ -4467,7 +4497,7 @@ void ModMenuProjectDialog::setupUI()
     auto rightWidget = new QWidget();
     auto rightLayout = new QVBoxLayout(rightWidget);
     rightLayout->setContentsMargins(0, 0, 0, 0);
-    rightLayout->addWidget(new QLabel(tr("<b>File Preview:</b>")));
+    rightLayout->addWidget(new QLabel(tr("<b>File Preview / Build Output:</b>")));
     
     m_PreviewArea = new QTextBrowser();
     m_PreviewArea->setStyleSheet("background: #0d1117; color: #7ee787; font-family: 'Consolas', monospace;");
@@ -4503,6 +4533,8 @@ void ModMenuProjectDialog::setupUI()
     connect(m_SaveBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onSaveProject);
     connect(m_OpenFolderBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onOpenFolder);
     connect(m_DownloadDepsBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onDownloadDependencies);
+    connect(m_DownloadNDKBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onDownloadNDK);
+    connect(m_BuildBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onBuildProject);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
 }
 
@@ -4550,7 +4582,8 @@ void ModMenuProjectDialog::onGenerateClicked()
         
         m_SaveBtn->setEnabled(true);
         m_OpenFolderBtn->setEnabled(true);
-        m_StatusLabel->setText(tr("✅ Project generated successfully!"));
+        m_BuildBtn->setEnabled(true);
+        m_StatusLabel->setText(tr("✅ Project generated successfully! Click 'Build Mod' to compile."));
     }
     
     m_GenerateBtn->setEnabled(true);
@@ -4761,4 +4794,329 @@ void ModMenuProjectDialog::extractZip(const QString &zipPath, const QString &des
     // For now, we download individual files instead of zips
     Q_UNUSED(zipPath);
     Q_UNUSED(destDir);
+}
+
+QString ModMenuProjectDialog::findNDKPath()
+{
+    // Check common NDK locations
+    QStringList possiblePaths;
+    
+#ifdef Q_OS_WIN
+    QString localAppData = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    possiblePaths << localAppData + "/Android/Sdk/ndk";
+    possiblePaths << "C:/Android/ndk";
+    possiblePaths << "C:/Users/" + qgetenv("USERNAME") + "/AppData/Local/Android/Sdk/ndk";
+    possiblePaths << QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/ndk";
+#else
+    possiblePaths << QDir::homePath() + "/Android/Sdk/ndk";
+    possiblePaths << "/opt/android-ndk";
+    possiblePaths << "/usr/local/android-ndk";
+    possiblePaths << QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/ndk";
+#endif
+    
+    // Check environment variables
+    QString envNdk = qgetenv("ANDROID_NDK_HOME");
+    if (!envNdk.isEmpty()) possiblePaths.prepend(envNdk);
+    envNdk = qgetenv("NDK_ROOT");
+    if (!envNdk.isEmpty()) possiblePaths.prepend(envNdk);
+    
+    // Check settings
+    QSettings settings;
+    QString savedNdk = settings.value("ndk_path").toString();
+    if (!savedNdk.isEmpty()) possiblePaths.prepend(savedNdk);
+    
+    for (const QString &basePath : possiblePaths) {
+        QDir dir(basePath);
+        if (dir.exists()) {
+            // Check if this is an NDK directory
+#ifdef Q_OS_WIN
+            if (QFile::exists(basePath + "/ndk-build.cmd")) {
+                return basePath;
+            }
+#else
+            if (QFile::exists(basePath + "/ndk-build")) {
+                return basePath;
+            }
+#endif
+            // Check for versioned subdirectories
+            QStringList versions = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name | QDir::Reversed);
+            for (const QString &version : versions) {
+                QString versionPath = basePath + "/" + version;
+#ifdef Q_OS_WIN
+                if (QFile::exists(versionPath + "/ndk-build.cmd")) {
+                    return versionPath;
+                }
+#else
+                if (QFile::exists(versionPath + "/ndk-build")) {
+                    return versionPath;
+                }
+#endif
+            }
+        }
+    }
+    
+    return QString();
+}
+
+bool ModMenuProjectDialog::checkNDK()
+{
+    return !findNDKPath().isEmpty();
+}
+
+bool ModMenuProjectDialog::checkDobbyLibrary()
+{
+    QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString dobbyLib = appDataDir + "/mod_deps/dobby/libdobby.a";
+    return QFile::exists(dobbyLib);
+}
+
+void ModMenuProjectDialog::onDownloadNDK()
+{
+    m_PreviewArea->clear();
+    m_PreviewArea->append("<span style='color: #58a6ff; font-weight: bold;'>📥 Android NDK Download</span>");
+    m_PreviewArea->append("");
+    
+    // NDK is large (~1.5GB), so we provide instructions instead of direct download
+    QString ndkUrl = "https://developer.android.com/ndk/downloads";
+    
+#ifdef Q_OS_WIN
+    QString ndkDirectUrl = "https://dl.google.com/android/repository/android-ndk-r25c-windows.zip";
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>The Android NDK is required to compile native mod menus.</span>");
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>NDK size: ~1.5 GB</span>");
+    m_PreviewArea->append("");
+    m_PreviewArea->append("<span style='color: #7ee787;'>Option 1: Automatic Download (Recommended)</span>");
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>Downloading NDK r25c for Windows...</span>");
+    
+    // Start download
+    QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString ndkZipPath = appDataDir + "/ndk-r25c-windows.zip";
+    QString ndkExtractPath = appDataDir + "/ndk";
+    
+    QDir().mkpath(appDataDir);
+    
+    m_DownloadNDKBtn->setEnabled(false);
+    m_DownloadNDKBtn->setText(tr("⏳ Downloading NDK..."));
+    m_StatusLabel->setText(tr("Downloading Android NDK (~1.5GB)... This may take a while."));
+    
+    // For large files, we should use a streaming download approach
+    // For now, show manual instructions
+    m_PreviewArea->append("");
+    m_PreviewArea->append("<span style='color: #d29922;'>⚠️ NDK is large. For faster setup, download manually:</span>");
+    m_PreviewArea->append("");
+    m_PreviewArea->append(QString("<span style='color: #58a6ff;'>1. Download from: <a href='%1'>%1</a></span>").arg(ndkDirectUrl));
+    m_PreviewArea->append(QString("<span style='color: #c9d1d9;'>2. Extract to: %1</span>").arg(ndkExtractPath));
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>3. Click 'Build Mod' after extraction</span>");
+    
+#else
+    QString ndkDirectUrl = "https://dl.google.com/android/repository/android-ndk-r25c-linux.zip";
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>Download NDK from:</span>");
+    m_PreviewArea->append(QString("<span style='color: #58a6ff;'><a href='%1'>%1</a></span>").arg(ndkDirectUrl));
+#endif
+    
+    m_PreviewArea->append("");
+    m_PreviewArea->append("<span style='color: #7ee787;'>Option 2: Use Android Studio</span>");
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>1. Open Android Studio → SDK Manager</span>");
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>2. SDK Tools tab → Check 'NDK (Side by side)'</span>");
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>3. Apply and wait for installation</span>");
+    
+    m_PreviewArea->append("");
+    m_PreviewArea->append("<span style='color: #7ee787;'>Option 3: Command Line</span>");
+#ifdef Q_OS_WIN
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>sdkmanager --install \"ndk;25.2.9519653\"</span>");
+#else
+    m_PreviewArea->append("<span style='color: #c9d1d9;'>$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \"ndk;25.2.9519653\"</span>");
+#endif
+    
+    // Open download page in browser
+    QDesktopServices::openUrl(QUrl(ndkUrl));
+    
+    m_DownloadNDKBtn->setEnabled(true);
+    m_DownloadNDKBtn->setText(tr("📥 Download Android NDK"));
+    m_StatusLabel->setText(tr("NDK download page opened in browser"));
+}
+
+void ModMenuProjectDialog::onBuildProject()
+{
+    if (m_OutputDir.isEmpty()) {
+        m_PreviewArea->append("<span style='color: #f85149;'>❌ Generate project first!</span>");
+        return;
+    }
+    
+    m_NDKPath = findNDKPath();
+    if (m_NDKPath.isEmpty()) {
+        m_PreviewArea->append("<span style='color: #f85149;'>❌ Android NDK not found!</span>");
+        m_PreviewArea->append("<span style='color: #c9d1d9;'>Click 'Download Android NDK' first.</span>");
+        return;
+    }
+    
+    // Check for Dobby library
+    if (!checkDobbyLibrary()) {
+        m_PreviewArea->append("<span style='color: #d29922;'>⚠️ libdobby.a not found. Building Dobby first...</span>");
+        buildDobbyFromSource();
+        return;
+    }
+    
+    runNdkBuild();
+}
+
+void ModMenuProjectDialog::buildDobbyFromSource()
+{
+    m_PreviewArea->append("");
+    m_PreviewArea->append("<span style='color: #58a6ff;'>🔧 Building Dobby from source...</span>");
+    
+    QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString dobbyDir = appDataDir + "/dobby_src";
+    QString buildDir = dobbyDir + "/build";
+    QString outputLib = appDataDir + "/mod_deps/dobby/libdobby.a";
+    
+    // Check if Dobby source exists
+    if (!QDir(dobbyDir).exists()) {
+        m_PreviewArea->append("<span style='color: #c9d1d9;'>Cloning Dobby repository...</span>");
+        
+        m_BuildProcess = new QProcess(this);
+        connect(m_BuildProcess, &QProcess::readyReadStandardOutput, this, &ModMenuProjectDialog::onBuildProcessOutput);
+        connect(m_BuildProcess, &QProcess::readyReadStandardError, this, &ModMenuProjectDialog::onBuildProcessOutput);
+        connect(m_BuildProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), 
+                this, &ModMenuProjectDialog::onBuildProcessFinished);
+        
+        m_BuildProcess->setWorkingDirectory(appDataDir);
+        m_BuildProcess->start("git", {"clone", "--depth", "1", "https://github.com/jmpews/Dobby.git", "dobby_src"});
+        
+        m_BuildBtn->setEnabled(false);
+        m_BuildBtn->setText(tr("⏳ Cloning Dobby..."));
+        m_StatusLabel->setText(tr("Cloning Dobby repository..."));
+    } else {
+        // Build Dobby
+        m_PreviewArea->append("<span style='color: #c9d1d9;'>Dobby source found. Building...</span>");
+        
+        QDir().mkpath(buildDir);
+        
+        m_BuildProcess = new QProcess(this);
+        connect(m_BuildProcess, &QProcess::readyReadStandardOutput, this, &ModMenuProjectDialog::onBuildProcessOutput);
+        connect(m_BuildProcess, &QProcess::readyReadStandardError, this, &ModMenuProjectDialog::onBuildProcessOutput);
+        connect(m_BuildProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), 
+                this, &ModMenuProjectDialog::onBuildProcessFinished);
+        
+        // Run CMake
+        QString cmakeCmd = QString("cmake .. -DCMAKE_TOOLCHAIN_FILE=%1/build/cmake/android.toolchain.cmake "
+                                   "-DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DCMAKE_BUILD_TYPE=Release")
+                           .arg(m_NDKPath);
+        
+        m_BuildProcess->setWorkingDirectory(buildDir);
+#ifdef Q_OS_WIN
+        m_BuildProcess->start("cmd", {"/c", cmakeCmd});
+#else
+        m_BuildProcess->start("sh", {"-c", cmakeCmd});
+#endif
+        
+        m_BuildBtn->setEnabled(false);
+        m_BuildBtn->setText(tr("⏳ Building Dobby..."));
+        m_StatusLabel->setText(tr("Building Dobby with CMake..."));
+    }
+}
+
+void ModMenuProjectDialog::runNdkBuild()
+{
+    m_PreviewArea->append("");
+    m_PreviewArea->append("<span style='color: #58a6ff; font-weight: bold;'>🔨 Building Mod Menu...</span>");
+    m_PreviewArea->append(QString("<span style='color: #8b949e;'>NDK: %1</span>").arg(m_NDKPath));
+    m_PreviewArea->append(QString("<span style='color: #8b949e;'>Project: %1</span>").arg(m_OutputDir));
+    m_PreviewArea->append("");
+    
+    m_BuildProcess = new QProcess(this);
+    connect(m_BuildProcess, &QProcess::readyReadStandardOutput, this, &ModMenuProjectDialog::onBuildProcessOutput);
+    connect(m_BuildProcess, &QProcess::readyReadStandardError, this, &ModMenuProjectDialog::onBuildProcessOutput);
+    connect(m_BuildProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), 
+            this, &ModMenuProjectDialog::onBuildProcessFinished);
+    
+    m_BuildProcess->setWorkingDirectory(m_OutputDir);
+    
+#ifdef Q_OS_WIN
+    QString ndkBuild = m_NDKPath + "/ndk-build.cmd";
+    m_BuildProcess->start(ndkBuild, {"NDK_PROJECT_PATH=.", "APP_BUILD_SCRIPT=./jni/Android.mk", "-j4"});
+#else
+    QString ndkBuild = m_NDKPath + "/ndk-build";
+    m_BuildProcess->start(ndkBuild, {"NDK_PROJECT_PATH=.", "APP_BUILD_SCRIPT=./jni/Android.mk", "-j4"});
+#endif
+    
+    m_BuildBtn->setEnabled(false);
+    m_BuildBtn->setText(tr("⏳ Compiling..."));
+    m_StatusLabel->setText(tr("Compiling mod menu with NDK..."));
+    m_Progress->setRange(0, 0); // Indeterminate progress
+}
+
+void ModMenuProjectDialog::onBuildProcessOutput()
+{
+    if (!m_BuildProcess) return;
+    
+    QByteArray output = m_BuildProcess->readAllStandardOutput();
+    QByteArray error = m_BuildProcess->readAllStandardError();
+    
+    if (!output.isEmpty()) {
+        QString text = QString::fromUtf8(output);
+        for (const QString &line : text.split('\n')) {
+            if (line.trimmed().isEmpty()) continue;
+            
+            QString color = "#c9d1d9";
+            if (line.contains("error", Qt::CaseInsensitive)) color = "#f85149";
+            else if (line.contains("warning", Qt::CaseInsensitive)) color = "#d29922";
+            else if (line.contains("Compile") || line.contains("Building")) color = "#58a6ff";
+            
+            m_PreviewArea->append(QString("<span style='color: %1;'>%2</span>").arg(color, line.trimmed()));
+        }
+    }
+    
+    if (!error.isEmpty()) {
+        QString text = QString::fromUtf8(error);
+        for (const QString &line : text.split('\n')) {
+            if (line.trimmed().isEmpty()) continue;
+            m_PreviewArea->append(QString("<span style='color: #f85149;'>%1</span>").arg(line.trimmed()));
+        }
+    }
+    
+    // Auto-scroll to bottom
+    m_PreviewArea->verticalScrollBar()->setValue(m_PreviewArea->verticalScrollBar()->maximum());
+}
+
+void ModMenuProjectDialog::onBuildProcessFinished(int exitCode, QProcess::ExitStatus status)
+{
+    m_Progress->setRange(0, 100);
+    m_Progress->setValue(100);
+    m_BuildBtn->setEnabled(true);
+    m_BuildBtn->setText(tr("🔨 Build Mod"));
+    
+    if (status == QProcess::NormalExit && exitCode == 0) {
+        m_PreviewArea->append("");
+        m_PreviewArea->append("<span style='color: #7ee787; font-weight: bold;'>✅ BUILD SUCCESSFUL!</span>");
+        
+        // Check for output file
+        QString outputSo = m_OutputDir + "/libs/arm64-v8a/libmodmenu.so";
+        if (QFile::exists(outputSo)) {
+            QFileInfo info(outputSo);
+            m_PreviewArea->append(QString("<span style='color: #7ee787;'>📦 Output: %1 (%2 KB)</span>")
+                .arg(outputSo).arg(info.size() / 1024));
+            
+            m_PreviewArea->append("");
+            m_PreviewArea->append("<span style='color: #58a6ff;'>Next steps:</span>");
+            m_PreviewArea->append("<span style='color: #c9d1d9;'>1. Copy libmodmenu.so to APK's lib/arm64-v8a/</span>");
+            m_PreviewArea->append("<span style='color: #c9d1d9;'>2. Add smali_inject/ModLoader.smali to APK</span>");
+            m_PreviewArea->append("<span style='color: #c9d1d9;'>3. Inject loader into main Activity's onCreate</span>");
+            m_PreviewArea->append("<span style='color: #c9d1d9;'>4. Recompile and sign APK</span>");
+        }
+        
+        m_StatusLabel->setText(tr("Build completed successfully!"));
+    } else {
+        m_PreviewArea->append("");
+        m_PreviewArea->append(QString("<span style='color: #f85149; font-weight: bold;'>❌ BUILD FAILED (exit code: %1)</span>").arg(exitCode));
+        m_PreviewArea->append("<span style='color: #c9d1d9;'>Check the output above for errors.</span>");
+        m_StatusLabel->setText(tr("Build failed with exit code %1").arg(exitCode));
+    }
+    
+    m_BuildProcess->deleteLater();
+    m_BuildProcess = nullptr;
+}
+
+void ModMenuProjectDialog::onBuildDobby()
+{
+    buildDobbyFromSource();
 }

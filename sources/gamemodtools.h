@@ -309,6 +309,11 @@ private slots:
     void onOpenFolder();
     void onDownloadDependencies();
     void onDownloadFinished(QNetworkReply *reply);
+    void onDownloadNDK();
+    void onBuildProject();
+    void onBuildDobby();
+    void onBuildProcessOutput();
+    void onBuildProcessFinished(int exitCode, QProcess::ExitStatus status);
 
 private:
     void setupUI();
@@ -316,6 +321,11 @@ private:
     void downloadFile(const QString &url, const QString &destPath, const QString &description);
     void extractZip(const QString &zipPath, const QString &destDir);
     bool checkDependencies();
+    bool checkNDK();
+    QString findNDKPath();
+    bool checkDobbyLibrary();
+    void buildDobbyFromSource();
+    void runNdkBuild();
     
     QString m_ProjectPath;
     QList<ModOption> m_Mods;
@@ -327,17 +337,22 @@ private:
     QTextBrowser *m_PreviewArea;
     QProgressBar *m_Progress;
     QLabel *m_StatusLabel;
+    QLabel *m_NDKStatusLabel;
     QPushButton *m_GenerateBtn;
     QPushButton *m_SaveBtn;
     QPushButton *m_OpenFolderBtn;
     QPushButton *m_DownloadDepsBtn;
+    QPushButton *m_DownloadNDKBtn;
+    QPushButton *m_BuildBtn;
     QCheckBox *m_AutoDownloadCheck;
     
     QMap<QString, QString> m_GeneratedFiles;
     QString m_OutputDir;
+    QString m_NDKPath;
     QNetworkAccessManager *m_NetworkManager;
     QMap<QNetworkReply*, QPair<QString, QString>> m_PendingDownloads; // reply -> (destPath, description)
     int m_DownloadsRemaining;
+    QProcess *m_BuildProcess;
 };
 
 #endif // GAMEMODTOOLS_H
