@@ -451,7 +451,16 @@ void GameModStudio::runDumper()
         }
     }
     
-    // 4. Neither found or configured
+    // 4. Check if IL2CPP dump exists with dummy DLLs - can decompile those with ILSpy
+    QString dummyDll = m_ProjectPath + "/dump/DummyDll/Assembly-CSharp.dll";
+    if (QFile::exists(dummyDll)) {
+        logMessage("Found DummyDll from IL2CPP Dumper - attempting ILSpy decompilation...", "info");
+        if (runILSpyOnDummyDlls()) {
+            return;
+        }
+    }
+    
+    // 5. Neither found or configured
     logMessage("Could not decompile. Check 'Verify' for details and configure tools in Settings.", "error");
     verifyDecompilation();
 }
@@ -650,8 +659,18 @@ void GameModStudio::verifyDecompilation()
             }
         }
         
-        addRow("C# Source Decompiled", hasMonoSource, hasMonoSource ? "Ready for AI analysis" : "Not yet decompiled");
-        addRow("IL2CPP Dump Available", hasIl2cppDump, hasIl2cppDump ? "dump.cs ready" : "Not yet dumped");
+        // Show appropriate status based on backend type
+        if (hasAssemblyCSharp) {
+            addRow("C# Source Decompiled", hasMonoSource, hasMonoSource ? "Ready for AI analysis" : "Click 'Decompile' to extract");
+        }
+        if (hasIl2cpp) {
+            addRow("IL2CPP Dump Available", hasIl2cppDump, hasIl2cppDump ? "dump.cs ready for analysis" : "Click 'Decompile' to dump");
+            // Check for dummy DLLs that can be further decompiled
+            bool hasDummyDlls = QFile::exists(m_ProjectPath + "/dump/DummyDll/Assembly-CSharp.dll");
+            if (hasIl2cppDump && hasDummyDlls) {
+                addRow("Dummy DLLs", true, "Can extract class structures with ILSpy");
+            }
+        }
     } else {
         addRow("Engine", true, GameEngineDetector::engineName(m_DetectedEngine));
         addRow("Unity Decompilation", false, "Not a Unity game");
@@ -773,6 +792,74 @@ bool GameModStudio::runILSpyDecompilation()
         }
         process->deleteLater();
     });
+    
+    return true;
+}
+
+bool GameModStudio::runILSpyOnDummyDlls()
+{
+    QSettings settings;
+    QString ilspy = settings.value("ilspy_cmd").toString();
+    
+    if (ilspy.isEmpty() || !QFile::exists(ilspy)) {
+        logMessage("ILSpyCmd not configured. Go to Settings → Binaries.", "error");
+        return false;
+    }
+    
+    QString dummyDir = m_ProjectPath + "/dump/DummyDll";
+    if (!QDir(dummyDir).exists()) {
+        logMessage("DummyDll directory not found.", "error");
+        return false;
+    }
+    
+    // Find all DLLs to decompile
+    QStringList dlls;
+    QDirIterator it(dummyDir, {"*.dll"}, QDir::Files);
+    while (it.hasNext()) {
+        dlls << it.next();
+    }
+    
+    if (dlls.isEmpty()) {
+        logMessage("No DLL files found in DummyDll directory.", "error");
+        return false;
+    }
+    
+    QString outDir = m_ProjectPath + "/csharp_src";
+    QDir().mkpath(outDir);
+    
+    logMessage(QString("Running ILSpyCmd on %1 DLL files...").arg(dlls.size()), "info");
+    m_Progress->setVisible(true);
+    m_Progress->setRange(0, dlls.size());
+    m_Progress->setValue(0);
+    
+    // Process DLLs sequentially
+    int *completed = new int(0);
+    int total = dlls.size();
+    
+    for (const QString &dll : dlls) {
+        QProcess *process = new QProcess(this);
+        QString dllName = QFileInfo(dll).baseName();
+        QString dllOutDir = outDir + "/" + dllName;
+        QDir().mkpath(dllOutDir);
+        
+        process->start(ilspy, {"-o", dllOutDir, dll});
+        
+        connect(process, &QProcess::finished, this, [=](int exitCode) {
+            (*completed)++;
+            m_Progress->setValue(*completed);
+            
+            if (exitCode != 0) {
+                logMessage(QString("Warning: Failed to decompile %1").arg(dllName), "warning");
+            }
+            
+            if (*completed >= total) {
+                m_Progress->setVisible(false);
+                logMessage("✅ C# class structures extracted from IL2CPP DummyDlls!", "success");
+                delete completed;
+            }
+            process->deleteLater();
+        });
+    }
     
     return true;
 }

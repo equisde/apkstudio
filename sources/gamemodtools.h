@@ -127,6 +127,7 @@ private:
     bool checkUnityDecompilation();
     QString collectGameContext();
     bool runILSpyDecompilation();
+    bool runILSpyOnDummyDlls();
     bool runIl2CppDumper();
     void checkToolsAndSuggestDownload();
 
