@@ -126,6 +126,7 @@ private:
     void askAI(const QString &prompt, std::function<void(const QString&)> callback);
     bool checkUnityDecompilation();
     QString collectGameContext();
+    QString categorizeClass(const QString &className, const QString &content);
     bool runILSpyDecompilation();
     bool runILSpyOnDummyDlls();
     bool runIl2CppDumper();

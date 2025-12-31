@@ -475,26 +475,76 @@ void GameModStudio::analyzeWithAI()
     // Collect game context from multiple sources
     QString gameContext;
     QString engineType = "Unknown";
+    QString gameName = QDir(m_ProjectPath).dirName();
     int filesAnalyzed = 0;
+    int totalClasses = 0;
     
     // Detect engine type
-    if (QFile::exists(m_ProjectPath + "/assets/bin/Data/Managed/Assembly-CSharp.dll") ||
-        QFile::exists(m_ProjectPath + "/lib/arm64-v8a/libil2cpp.so") ||
-        QFile::exists(m_ProjectPath + "/lib/armeabi-v7a/libil2cpp.so")) {
-        engineType = "Unity";
+    bool isIL2CPP = QFile::exists(m_ProjectPath + "/lib/arm64-v8a/libil2cpp.so") ||
+                   QFile::exists(m_ProjectPath + "/lib/armeabi-v7a/libil2cpp.so");
+    bool isMono = QFile::exists(m_ProjectPath + "/assets/bin/Data/Managed/Assembly-CSharp.dll");
+    
+    if (isIL2CPP || isMono) {
+        engineType = isIL2CPP ? "Unity (IL2CPP)" : "Unity (Mono)";
     } else if (QFile::exists(m_ProjectPath + "/assets/main.pak") ||
                QFile::exists(m_ProjectPath + "/lib/arm64-v8a/libUE4.so")) {
         engineType = "Unreal Engine";
-    } else if (QFile::exists(m_ProjectPath + "/assets/game.dex") ||
-               QFile::exists(m_ProjectPath + "/assets/game.unitypack") == false) {
+    } else if (QFile::exists(m_ProjectPath + "/lib/arm64-v8a/libflutter.so")) {
+        engineType = "Flutter";
+    } else {
         engineType = "Native Android/Java";
     }
     
-    gameContext += QString("## Game Information\n");
-    gameContext += QString("- **Engine**: %1\n").arg(engineType);
-    gameContext += QString("- **Project Path**: %1\n\n").arg(m_ProjectPath);
+    // Extract package name from manifest
+    QString packageName = "unknown";
+    QString manifestPath = m_ProjectPath + "/AndroidManifest.xml";
+    if (QFile::exists(manifestPath)) {
+        QFile manifestFile(manifestPath);
+        if (manifestFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString manifestContent = QString::fromUtf8(manifestFile.readAll());
+            manifestFile.close();
+            QRegularExpression pkgRegex("package=\"([^\"]+)\"");
+            QRegularExpressionMatch match = pkgRegex.match(manifestContent);
+            if (match.hasMatch()) {
+                packageName = match.captured(1);
+                gameName = packageName.split('.').last();
+            }
+        }
+    }
+    
+    gameContext += QString("# Game Analysis Report\n\n");
+    gameContext += QString("| Property | Value |\n|---|---|\n");
+    gameContext += QString("| Game Name | %1 |\n").arg(gameName);
+    gameContext += QString("| Package | %1 |\n").arg(packageName);
+    gameContext += QString("| Engine | %1 |\n").arg(engineType);
+    gameContext += QString("| Build Type | %1 |\n\n").arg(isIL2CPP ? "IL2CPP (Native compiled)" : "Mono (JIT/.NET)");
 
-    // 1. Try to read IL2CPP dump.cs first (most common for Unity IL2CPP games)
+    // Extended keywords for better class detection
+    QStringList gameKeywords = {
+        // Currency & Economy
+        "Currency", "Gold", "Coin", "Gem", "Diamond", "Crystal", "Token", "Credit", "Cash", "Money",
+        "Wallet", "Bank", "Economy", "Balance", "Reward", "Prize", "Loot", "Treasure",
+        // Player & Stats
+        "Player", "Character", "Hero", "Avatar", "User", "Profile", "Account",
+        "Health", "HP", "Life", "Lives", "Heart", "Damage", "Attack", "Defense", "Armor",
+        "Speed", "Velocity", "Power", "Strength", "Stamina", "Energy", "Mana", "MP",
+        "Level", "Experience", "XP", "Exp", "Rank", "Score", "Point",
+        // Inventory & Items
+        "Inventory", "Item", "Equipment", "Weapon", "Skill", "Ability", "Upgrade",
+        "Consumable", "Potion", "Buff", "PowerUp", "Boost",
+        // Shop & IAP
+        "Shop", "Store", "Purchase", "Buy", "Sell", "Price", "Cost", "IAP", "InApp", "Premium",
+        "Subscription", "VIP", "Ads", "Reward", "Offer", "Deal", "Bundle",
+        // Game Mechanics
+        "Timer", "Cooldown", "Countdown", "Time", "Duration", "Wait",
+        "Spawn", "Respawn", "Revive", "Continue",
+        // Managers & Controllers
+        "GameManager", "DataManager", "SaveManager", "PlayerData", "UserData",
+        "GameController", "GameState", "GameConfig", "Settings", "Config",
+        "NetworkManager", "ServerManager", "Analytics"
+    };
+
+    // 1. Read IL2CPP dump.cs with intelligent parsing
     QString dumpPath = m_ProjectPath + "/dump/dump.cs";
     if (QFile::exists(dumpPath)) {
         QFile dumpFile(dumpPath);
@@ -502,147 +552,188 @@ void GameModStudio::analyzeWithAI()
             QString dumpContent = QString::fromUtf8(dumpFile.readAll());
             dumpFile.close();
             
-            // Extract relevant classes (look for game-related classes)
-            QStringList relevantClasses;
+            logMessage(QString("Parsing dump.cs (%1 KB)...").arg(dumpContent.size() / 1024), "info");
+            
+            // Split into class blocks using regex
+            QMap<QString, QString> classMap; // category -> classes content
             QStringList lines = dumpContent.split('\n');
-            QString currentClass;
+            QString currentClassName;
             QStringList currentClassContent;
-            bool inRelevantClass = false;
+            bool inClass = false;
+            int braceCount = 0;
             
-            QStringList gameKeywords = {"Player", "Currency", "Gold", "Coin", "Gem", "Diamond", 
-                                         "Health", "Damage", "Attack", "Speed", "Energy", "Stamina",
-                                         "Inventory", "Item", "Shop", "Store", "Purchase", "Reward",
-                                         "Score", "Level", "Experience", "XP", "Skill", "Upgrade",
-                                         "Weapon", "Armor", "Stats", "Character", "Hero", "Unit",
-                                         "Resource", "Timer", "Cooldown", "Boost", "Power", "Mana",
-                                         "GameManager", "DataManager", "SaveManager", "PlayerData",
-                                         "UserData", "ProfileData", "WalletManager", "CurrencyManager"};
-            
-            for (const QString &line : lines) {
-                // Detect class declaration
-                if (line.contains("public class ") || line.contains("public static class ") ||
-                    line.contains("public sealed class ")) {
-                    // Save previous class if relevant
-                    if (inRelevantClass && !currentClassContent.isEmpty()) {
-                        relevantClasses.append(currentClassContent.join("\n"));
-                        filesAnalyzed++;
+            for (int i = 0; i < lines.size(); i++) {
+                QString line = lines[i];
+                
+                // Detect class/struct declaration
+                QRegularExpression classRegex("(public|internal|private)?\\s*(sealed|abstract|static)?\\s*class\\s+(\\w+)");
+                QRegularExpressionMatch classMatch = classRegex.match(line);
+                
+                if (classMatch.hasMatch()) {
+                    // Save previous class if it was relevant
+                    if (!currentClassName.isEmpty() && !currentClassContent.isEmpty()) {
+                        QString category = categorizeClass(currentClassName, currentClassContent.join("\n"));
+                        if (!category.isEmpty()) {
+                            classMap[category] += "\n```csharp\n// Class: " + currentClassName + "\n" + 
+                                                  currentClassContent.join("\n").left(3000) + "\n```\n";
+                            filesAnalyzed++;
+                        }
                     }
                     
-                    // Check if new class is relevant
-                    currentClass = line;
+                    currentClassName = classMatch.captured(3);
                     currentClassContent.clear();
-                    inRelevantClass = false;
+                    totalClasses++;
                     
+                    // Check if class name matches keywords
+                    bool isRelevant = false;
                     for (const QString &keyword : gameKeywords) {
-                        if (line.contains(keyword, Qt::CaseInsensitive)) {
-                            inRelevantClass = true;
+                        if (currentClassName.contains(keyword, Qt::CaseInsensitive)) {
+                            isRelevant = true;
                             break;
                         }
                     }
+                    
+                    if (isRelevant) {
+                        inClass = true;
+                        braceCount = 0;
+                    } else {
+                        inClass = false;
+                    }
                 }
                 
-                if (inRelevantClass) {
+                if (inClass) {
                     currentClassContent.append(line);
-                    // Limit class content to avoid too large prompts
-                    if (currentClassContent.size() > 100) {
-                        currentClassContent.append("    // ... (truncated)");
-                        inRelevantClass = false;
+                    braceCount += line.count('{') - line.count('}');
+                    
+                    // End of class
+                    if (braceCount <= 0 && currentClassContent.size() > 1) {
+                        inClass = false;
+                    }
+                    
+                    // Limit class size
+                    if (currentClassContent.size() > 150) {
+                        currentClassContent.append("    // ... (class continues)");
+                        inClass = false;
                     }
                 }
             }
             
-            // Add last class if relevant
-            if (inRelevantClass && !currentClassContent.isEmpty()) {
-                relevantClasses.append(currentClassContent.join("\n"));
-                filesAnalyzed++;
+            // Save last class
+            if (!currentClassName.isEmpty() && !currentClassContent.isEmpty()) {
+                QString category = categorizeClass(currentClassName, currentClassContent.join("\n"));
+                if (!category.isEmpty()) {
+                    classMap[category] += "\n```csharp\n// Class: " + currentClassName + "\n" + 
+                                          currentClassContent.join("\n").left(3000) + "\n```\n";
+                    filesAnalyzed++;
+                }
             }
             
-            if (!relevantClasses.isEmpty()) {
-                gameContext += "## IL2CPP Dump - Relevant Game Classes\n\n";
-                // Limit to first 15 classes to avoid token limits
-                int classCount = qMin(relevantClasses.size(), 15);
-                for (int i = 0; i < classCount; i++) {
-                    gameContext += "```csharp\n" + relevantClasses[i] + "\n```\n\n";
+            // Build organized context
+            if (!classMap.isEmpty()) {
+                gameContext += "## Extracted Game Classes (from IL2CPP dump)\n\n";
+                gameContext += QString("*Analyzed %1 total classes, found %2 relevant for modding*\n\n").arg(totalClasses).arg(filesAnalyzed);
+                
+                QStringList categoryOrder = {"💰 Currency/Economy", "❤️ Player/Stats", "🎒 Inventory/Items", 
+                                             "🛒 Shop/IAP", "⏱️ Timer/Cooldown", "🎮 Game Management", "🛡️ Anti-Cheat/Security"};
+                for (const QString &cat : categoryOrder) {
+                    if (classMap.contains(cat)) {
+                        gameContext += QString("### %1\n%2\n").arg(cat, classMap[cat]);
+                    }
                 }
-                logMessage(QString("Found %1 relevant game classes in dump.cs").arg(relevantClasses.size()), "info");
             }
+            
+            logMessage(QString("Found %1 relevant classes out of %2 total").arg(filesAnalyzed).arg(totalClasses), "info");
         }
     }
     
-    // 2. Try to read decompiled C# source files
+    // 2. Read decompiled C# source files (recursive search)
     QDir csharpDir(m_ProjectPath + "/csharp_src");
     if (csharpDir.exists()) {
-        QStringList csFiles = csharpDir.entryList(QStringList() << "*.cs", QDir::Files, QDir::Name);
+        QDirIterator it(csharpDir.path(), {"*.cs"}, QDir::Files, QDirIterator::Subdirectories);
+        QMap<QString, QString> sourceFiles;
+        int csFilesRead = 0;
         
-        QStringList gameKeywords = {"Player", "Currency", "Gold", "Coin", "Gem", "Diamond", 
-                                     "Health", "Damage", "Inventory", "Item", "Shop", "Score",
-                                     "GameManager", "DataManager", "SaveManager", "Wallet"};
-        
-        gameContext += "## Decompiled C# Source Files\n\n";
-        int filesRead = 0;
-        
-        for (const QString &csFile : csFiles) {
+        while (it.hasNext() && csFilesRead < 30) {
+            QString filePath = it.next();
+            QString fileName = QFileInfo(filePath).fileName();
+            
+            // Check if filename is relevant
             bool isRelevant = false;
             for (const QString &keyword : gameKeywords) {
-                if (csFile.contains(keyword, Qt::CaseInsensitive)) {
+                if (fileName.contains(keyword, Qt::CaseInsensitive)) {
                     isRelevant = true;
                     break;
                 }
             }
             
-            if (isRelevant && filesRead < 10) {
-                QFile file(csharpDir.filePath(csFile));
+            // Also check file content for relevant patterns
+            if (!isRelevant) {
+                QFile file(filePath);
+                if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                    QString preview = QString::fromUtf8(file.read(2000));
+                    file.close();
+                    for (const QString &keyword : gameKeywords) {
+                        if (preview.contains(keyword, Qt::CaseInsensitive)) {
+                            isRelevant = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (isRelevant) {
+                QFile file(filePath);
                 if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
                     QString content = QString::fromUtf8(file.readAll());
                     file.close();
                     
-                    // Limit file content
-                    if (content.length() > 5000) {
-                        content = content.left(5000) + "\n// ... (truncated)";
+                    QString category = categorizeClass(fileName, content);
+                    if (!category.isEmpty()) {
+                        QString truncated = content.length() > 4000 ? content.left(4000) + "\n// ... (truncated)" : content;
+                        sourceFiles[category] += QString("\n### %1\n```csharp\n%2\n```\n").arg(fileName, truncated);
+                        csFilesRead++;
+                        filesAnalyzed++;
                     }
-                    
-                    gameContext += QString("### %1\n```csharp\n%2\n```\n\n").arg(csFile, content);
-                    filesRead++;
-                    filesAnalyzed++;
                 }
+            }
+        }
+        
+        if (!sourceFiles.isEmpty()) {
+            gameContext += "\n## Decompiled C# Source Files\n\n";
+            for (auto it = sourceFiles.begin(); it != sourceFiles.end(); ++it) {
+                gameContext += QString("### %1\n%2\n").arg(it.key(), it.value());
             }
         }
     }
     
-    // 3. Read SharedPreferences/PlayerPrefs keys if available
+    // 3. Read SharedPreferences/PlayerPrefs (important for save data mods)
     QDir sharedPrefsDir(m_ProjectPath + "/shared_prefs");
     if (sharedPrefsDir.exists()) {
-        QStringList xmlFiles = sharedPrefsDir.entryList(QStringList() << "*.xml", QDir::Files);
+        QStringList xmlFiles = sharedPrefsDir.entryList({"*.xml"}, QDir::Files);
         if (!xmlFiles.isEmpty()) {
-            gameContext += "## SharedPreferences (Player Save Data Keys)\n\n";
+            gameContext += "\n## Player Save Data (SharedPreferences)\n\n";
+            gameContext += "*These files often contain modifiable game values stored locally*\n\n";
+            
             for (const QString &xmlFile : xmlFiles) {
                 QFile file(sharedPrefsDir.filePath(xmlFile));
                 if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
                     QString content = QString::fromUtf8(file.readAll());
                     file.close();
-                    if (content.length() > 3000) {
-                        content = content.left(3000) + "\n<!-- truncated -->";
+                    
+                    // Parse XML to extract key-value pairs
+                    QRegularExpression kvRegex("<(int|long|float|boolean|string)\\s+name=\"([^\"]+)\"[^>]*(?:value=\"([^\"]*)\")?");
+                    QRegularExpressionMatchIterator matches = kvRegex.globalMatch(content);
+                    
+                    if (matches.hasNext()) {
+                        gameContext += QString("### %1\n| Type | Key | Value |\n|---|---|---|\n").arg(xmlFile);
+                        while (matches.hasNext()) {
+                            QRegularExpressionMatch m = matches.next();
+                            gameContext += QString("| %1 | %2 | %3 |\n").arg(m.captured(1), m.captured(2), m.captured(3).left(50));
+                        }
+                        gameContext += "\n";
+                        filesAnalyzed++;
                     }
-                    gameContext += QString("### %1\n```xml\n%2\n```\n\n").arg(xmlFile, content);
-                    filesAnalyzed++;
                 }
-            }
-        }
-    }
-    
-    // 4. Read AndroidManifest for package name and permissions
-    QString manifestPath = m_ProjectPath + "/AndroidManifest.xml";
-    if (QFile::exists(manifestPath)) {
-        QFile manifestFile(manifestPath);
-        if (manifestFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QString manifestContent = QString::fromUtf8(manifestFile.readAll());
-            manifestFile.close();
-            
-            // Extract package name
-            QRegularExpression pkgRegex("package=\"([^\"]+)\"");
-            QRegularExpressionMatch match = pkgRegex.match(manifestContent);
-            if (match.hasMatch()) {
-                gameContext += QString("- **Package Name**: %1\n").arg(match.captured(1));
             }
         }
     }
@@ -658,35 +749,111 @@ void GameModStudio::analyzeWithAI()
         return;
     }
     
-    logMessage(QString("Analyzing %1 game files...").arg(filesAnalyzed), "info");
+    logMessage(QString("Analyzing %1 relevant game files...").arg(filesAnalyzed), "info");
+    m_AIResponseView->setMarkdown("## 🔄 Analyzing...\n\nProcessing " + QString::number(filesAnalyzed) + " game files with AI...");
     
-    // Build comprehensive prompt
+    // Build focused, actionable prompt
     QString prompt = QString(
-        "You are a game modding expert analyzing an Android game. Based on the source code provided below, "
-        "identify ALL modifiable game values and potential modding entry points.\n\n"
-        "**Your task:**\n"
-        "1. Find classes/methods related to: currencies (gold, gems, coins, diamonds), player stats (health, damage, speed), "
-        "inventory items, in-app purchases, timers/cooldowns, energy systems, upgrade costs\n"
-        "2. For each finding, provide:\n"
-        "   - Class name and method/field name\n"
-        "   - Current value type (int, float, etc.)\n"
-        "   - Suggested modification (e.g., 'Change return value to 999999')\n"
-        "   - Risk level (Safe/Medium/Risky for anti-cheat detection)\n\n"
-        "3. Provide specific Smali/C# code modifications when possible\n\n"
-        "4. Group findings by category:\n"
-        "   - 💰 Currency Mods\n"
-        "   - ❤️ Health/Stats Mods\n"
-        "   - ⚔️ Damage/Attack Mods\n"
-        "   - 🎒 Inventory Mods\n"
-        "   - ⏱️ Timer/Cooldown Mods\n"
-        "   - 🛒 IAP/Shop Mods\n\n"
-        "**Game Source Code:**\n\n%1"
-    ).arg(gameContext);
+        "You are an expert Android game reverse engineer. Analyze this %1 game and provide **SPECIFIC, ACTIONABLE** mod recommendations.\n\n"
+        "# IMPORTANT INSTRUCTIONS:\n"
+        "- DO NOT ask for more information - work with what's provided\n"
+        "- DO NOT provide generic modding tutorials\n"
+        "- ONLY list mods that are actually possible based on the code shown\n"
+        "- Be SPECIFIC with class names, method names, and field names from the code\n\n"
+        "# OUTPUT FORMAT (use exactly this structure):\n\n"
+        "## 🎯 Quick Summary\n"
+        "Brief 2-3 sentence summary of what mods are possible for this specific game.\n\n"
+        "## 💰 Currency/Resource Mods\n"
+        "For each mod:\n"
+        "- **Target**: `ClassName.MethodName` or `ClassName.FieldName`\n"
+        "- **Type**: field type (int, float, etc)\n"
+        "- **Modification**: Exact change needed\n"
+        "- **Code Example**: Show the hook/patch code\n"
+        "- **Risk**: Low/Medium/High (explain why)\n\n"
+        "## ❤️ Player Stats Mods\n"
+        "(same format)\n\n"
+        "## ⚔️ Combat/Damage Mods\n"
+        "(same format)\n\n"
+        "## 🛒 IAP/Purchase Bypass\n"
+        "(same format)\n\n"
+        "## ⏱️ Timer/Cooldown Mods\n"
+        "(same format)\n\n"
+        "## 🛡️ Anti-Cheat Considerations\n"
+        "List any anti-cheat or security mechanisms found and how to handle them.\n\n"
+        "---\n"
+        "# GAME SOURCE CODE:\n\n%2"
+    ).arg(engineType, gameContext);
     
     askAI(prompt, [this](const QString &res) {
         m_AIResponseView->setMarkdown(res);
         logMessage("AI Analysis complete!", "success");
     });
+}
+
+QString GameModStudio::categorizeClass(const QString &className, const QString &content)
+{
+    QString nameLower = className.toLower();
+    QString contentLower = content.toLower();
+    
+    // Currency/Economy
+    if (nameLower.contains("currency") || nameLower.contains("coin") || nameLower.contains("gold") ||
+        nameLower.contains("gem") || nameLower.contains("diamond") || nameLower.contains("wallet") ||
+        nameLower.contains("money") || nameLower.contains("cash") || nameLower.contains("credit") ||
+        nameLower.contains("token") || nameLower.contains("reward") || nameLower.contains("loot")) {
+        return "💰 Currency/Economy";
+    }
+    
+    // Player/Stats
+    if (nameLower.contains("player") || nameLower.contains("character") || nameLower.contains("hero") ||
+        nameLower.contains("health") || nameLower.contains("damage") || nameLower.contains("stats") ||
+        nameLower.contains("level") || nameLower.contains("experience") || nameLower.contains("xp") ||
+        nameLower.contains("userdata") || nameLower.contains("playerdata") || nameLower.contains("profile")) {
+        return "❤️ Player/Stats";
+    }
+    
+    // Inventory/Items
+    if (nameLower.contains("inventory") || nameLower.contains("item") || nameLower.contains("equipment") ||
+        nameLower.contains("weapon") || nameLower.contains("skill") || nameLower.contains("upgrade")) {
+        return "🎒 Inventory/Items";
+    }
+    
+    // Shop/IAP
+    if (nameLower.contains("shop") || nameLower.contains("store") || nameLower.contains("purchase") ||
+        nameLower.contains("iap") || nameLower.contains("buy") || nameLower.contains("price") ||
+        nameLower.contains("premium") || nameLower.contains("ads") || nameLower.contains("offer")) {
+        return "🛒 Shop/IAP";
+    }
+    
+    // Timer/Cooldown
+    if (nameLower.contains("timer") || nameLower.contains("cooldown") || nameLower.contains("countdown") ||
+        nameLower.contains("energy") || nameLower.contains("stamina") || nameLower.contains("wait")) {
+        return "⏱️ Timer/Cooldown";
+    }
+    
+    // Game Management
+    if (nameLower.contains("gamemanager") || nameLower.contains("datamanager") || nameLower.contains("savemanager") ||
+        nameLower.contains("gamecontroller") || nameLower.contains("config") || nameLower.contains("settings")) {
+        return "🎮 Game Management";
+    }
+    
+    // Anti-cheat/Security
+    if (nameLower.contains("cheat") || nameLower.contains("hack") || nameLower.contains("security") ||
+        nameLower.contains("verify") || nameLower.contains("validate") || nameLower.contains("integrity") ||
+        nameLower.contains("tamper") || nameLower.contains("detect") || nameLower.contains("check")) {
+        return "🛡️ Anti-Cheat/Security";
+    }
+    
+    // Check content for secondary classification
+    if (contentLower.contains("addcoin") || contentLower.contains("addgem") || contentLower.contains("setgold") ||
+        contentLower.contains("currency") || contentLower.contains("balance")) {
+        return "💰 Currency/Economy";
+    }
+    
+    if (contentLower.contains("takedamage") || contentLower.contains("sethp") || contentLower.contains("health")) {
+        return "❤️ Player/Stats";
+    }
+    
+    return ""; // Not relevant
 }
 
 void GameModStudio::askAI(const QString &prompt, std::function<void(const QString&)> callback)
