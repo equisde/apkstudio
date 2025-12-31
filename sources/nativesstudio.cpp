@@ -134,7 +134,8 @@ void NativeStudio::generateNativeHook() {
         m_AnalysisReport->append("<h3>Frida Hook Generated</h3><pre style='background: #0d1117; padding: 10px;'>" + script + "</pre>");
         
         // Save to file
-        QString scriptPath = m_ProjectPath + "/frida_hook_" + libName.replace(".so", "") + ".js";
+        QString libBaseName = QString(libName).replace(".so", "");
+        QString scriptPath = m_ProjectPath + "/frida_hook_" + libBaseName + ".js";
         QFile f(scriptPath);
         if (f.open(QIODevice::WriteOnly)) {
             f.write(script.toUtf8());
