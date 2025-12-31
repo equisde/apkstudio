@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QTreeWidget>
 #include <QTableWidget>
+#include <QListWidget>
 #include <QTextBrowser>
 #include <QPlainTextEdit>
 #include <QProgressBar>

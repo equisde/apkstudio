@@ -339,7 +339,7 @@ QString ToolDownloadWorker::getDownloadUrl()
         return getLatestGitHubRelease("icsharpcode/ILSpy", "ILSpy_binaries_.*-x64\\.zip$");
     
     case Mono:
-        return "https://download.mono-project.com/archive/6.12.0/windows-installer/mono-6.12.0.206-x64.msi";
+        return "https://download.mono-project.com/archive/6.12.0/windows-installer/mono-6.12.0.206-x64-0.msi";
     }
     
     return QString();
