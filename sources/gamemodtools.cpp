@@ -4013,7 +4013,7 @@ var CONFIG = {
     
     // Add config toggles for each mod
     for (const ModTarget &target : targets) {
-        QString varName = target.modId.replace("_", "");
+        QString varName = QString(target.modId).replace("_", "");
         script += QString("    %1: true,\n").arg(varName);
     }
     
@@ -4073,7 +4073,7 @@ function applyHooks(base) {
     bool hasPlaceholders = false;
     for (const ModTarget &target : targets) {
         QString funcName = modIdToFunctionName(target.modId);
-        QString varName = target.modId.replace("_", "");
+        QString varName = QString(target.modId).replace("_", "");
         
         if (target.hookType == "placeholder" || target.rva.isEmpty()) {
             hasPlaceholders = true;
@@ -4335,22 +4335,20 @@ QString ModMenuCodeGenerator::generateMenuToggle(const ModTarget &target)
         category = "Game Tweaks";
     }
     
-    QString toggleCode = QString(R"(        // %1 [%2]
-        ImGui::Checkbox("%3", &Mod::%4);
-        if (Mod::%4) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.47f, 0.90f, 0.47f, 1.0f), "(Active)");
-        }
-)").arg(target.modId, category, target.displayName, varName);
+    QString toggleCode = QString("        // %1 [%2]\n"
+        "        ImGui::Checkbox(\"%3\", &Mod::%4);\n"
+        "        if (Mod::%4) {\n"
+        "            ImGui::SameLine();\n"
+        "            ImGui::TextColored(ImVec4(0.47f, 0.90f, 0.47f, 1.0f), \"(Active)\");\n"
+        "        }\n").arg(target.modId, category, target.displayName, varName);
     
     // Add value slider for non-toggle mods
     if (target.value > 1 && target.hookType != "method_replace") {
         QString valueVar = "val_" + target.modId;
-        toggleCode += QString(R"(        static int %1 = %2;
-        if (Mod::%3) {
-            ImGui::SliderInt("Value##%4", &%1, 1, 999999999);
-        }
-)").arg(valueVar).arg(target.value).arg(varName, target.modId);
+        toggleCode += QString("        static int %1 = %2;\n"
+            "        if (Mod::%3) {\n"
+            "            ImGui::SliderInt(\"Value##%4\", &%1, 1, 999999999);\n"
+            "        }\n").arg(valueVar).arg(target.value).arg(varName, target.modId);
     }
     
     return toggleCode;

@@ -285,13 +285,13 @@ void ApkRecompileWorker::injectModLoader()
     
     // Find launcher activity
     QRegularExpression activityRegex(
-        R"(<activity[^>]*android:name="([^"]+)"[^>]*>[\s\S]*?<intent-filter[\s\S]*?android\.intent\.action\.MAIN[\s\S]*?</intent-filter>)",
+        "<activity[^>]*android:name=\"([^\"]+)\"[^>]*>[\\s\\S]*?<intent-filter[\\s\\S]*?android\\.intent\\.action\\.MAIN[\\s\\S]*?</intent-filter>",
         QRegularExpression::MultilineOption);
     
     QRegularExpressionMatch match = activityRegex.match(manifestContent);
     if (!match.hasMatch()) {
         // Try simpler pattern
-        activityRegex.setPattern(R"(<activity[^>]*android:name="([^"]+)"[^>]*android\.intent\.category\.LAUNCHER)");
+        activityRegex.setPattern("<activity[^>]*android:name=\"([^\"]+)\"[^>]*android\\.intent\\.category\\.LAUNCHER");
         match = activityRegex.match(manifestContent);
     }
     
@@ -302,7 +302,7 @@ void ApkRecompileWorker::injectModLoader()
         QString smaliPath = mainActivity.replace(".", "/");
         if (!smaliPath.startsWith("/")) {
             // Relative class name, try to find package
-            QRegularExpression pkgRegex(R"(package="([^"]+)")");
+            QRegularExpression pkgRegex("package=\"([^\"]+)\"");
             QRegularExpressionMatch pkgMatch = pkgRegex.match(manifestContent);
             if (pkgMatch.hasMatch()) {
                 QString pkg = pkgMatch.captured(1).replace(".", "/");
