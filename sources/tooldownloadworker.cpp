@@ -146,7 +146,8 @@ void ToolDownloadWorker::download()
             return;
         }
 
-        QDir().mkpath(extractPath);
+        bool dirCreated = QDir().mkpath(extractPath);
+        qInfo() << "ToolDownloadWorker: extractPath =" << extractPath << ", created =" << dirCreated;
 
         bool extracted = false;
         if (fileName.endsWith(".zip", Qt::CaseInsensitive)) {
@@ -156,6 +157,7 @@ void ToolDownloadWorker::download()
             // JAR files don't need extraction, just copy to the extract path
             emit progress(75, tr("Copying %1...").arg(fileName));
             QString targetPath = QDir(extractPath).filePath(fileName);
+            qInfo() << "ToolDownloadWorker: copying JAR from" << filePath << "to" << targetPath;
             
             // Remove existing file if it exists
             if (QFile::exists(targetPath)) {
@@ -165,6 +167,7 @@ void ToolDownloadWorker::download()
             // Copy the JAR file
             if (QFile::copy(filePath, targetPath)) {
                 extracted = true;
+                qInfo() << "ToolDownloadWorker: JAR copied successfully to" << targetPath;
             } else {
                 QString errorMsg = tr("Failed to copy JAR file to %1").arg(targetPath);
 #ifdef QT_DEBUG
@@ -214,14 +217,21 @@ void ToolDownloadWorker::download()
         emit progress(90, tr("Locating executable..."));
 
         // Find executable
+        qInfo() << "ToolDownloadWorker: Looking for executable in" << extractPath;
         QString executablePath = findExecutableInExtracted(extractPath);
+        qInfo() << "ToolDownloadWorker: findExecutableInExtracted returned:" << executablePath;
         
         // For MSI/PKG installations, also check system locations
         if (executablePath.isEmpty() && (fileName.endsWith(".msi", Qt::CaseInsensitive) || fileName.endsWith(".pkg", Qt::CaseInsensitive))) {
+            qInfo() << "ToolDownloadWorker: Checking system locations for MSI/PKG";
             executablePath = findExecutableInSystemLocations();
         }
         
         if (executablePath.isEmpty()) {
+            qWarning() << "ToolDownloadWorker: Could not find executable after installation. extractPath:" << extractPath << ", fileName:" << fileName;
+            // List what's actually in the extractPath
+            QDir debugDir(extractPath);
+            qWarning() << "ToolDownloadWorker: Contents of extractPath:" << debugDir.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
             emit failed(tr("Could not find executable after installation"));
             m_NetworkReply->deleteLater();
             m_NetworkReply = nullptr;
@@ -372,6 +382,8 @@ QString ToolDownloadWorker::getExtractPath()
 QString ToolDownloadWorker::findExecutableInExtracted(const QString &extractedPath)
 {
     QDir dir(extractedPath);
+    qInfo() << "ToolDownloadWorker::findExecutableInExtracted: searching in" << extractedPath;
+    qInfo() << "ToolDownloadWorker::findExecutableInExtracted: directory exists =" << dir.exists();
     
     // Look for common executable names
     QStringList executableNames;
@@ -381,8 +393,8 @@ QString ToolDownloadWorker::findExecutableInExtracted(const QString &extractedPa
         executableNames << "bin/java" << "bin/java.exe" << "java" << "java.exe";
         // Also check for nested jdk directories
         {
-            QDir dir(extractedPath);
-            QStringList entries = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+            QDir javaDir(extractedPath);
+            QStringList entries = javaDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
             for (const QString &entry : entries) {
                 if (entry.contains("jdk", Qt::CaseInsensitive) || entry.contains("java", Qt::CaseInsensitive)) {
                     executableNames << entry + "/bin/java" << entry + "/bin/java.exe";
@@ -393,11 +405,14 @@ QString ToolDownloadWorker::findExecutableInExtracted(const QString &extractedPa
     case Apktool:
         // Look for any JAR file containing "apktool" in the name (handles versioned names like apktool_2.9.3.jar)
         {
-            QDir dir(extractedPath);
-            QStringList files = dir.entryList(QDir::Files, QDir::Name);
+            QDir apktoolDir(extractedPath);
+            QStringList files = apktoolDir.entryList(QDir::Files, QDir::Name);
+            qInfo() << "ToolDownloadWorker: Apktool - files in directory:" << files;
             for (const QString &file : files) {
                 if (file.contains("apktool", Qt::CaseInsensitive) && file.endsWith(".jar", Qt::CaseInsensitive)) {
-                    return dir.absoluteFilePath(file);
+                    QString foundPath = apktoolDir.absoluteFilePath(file);
+                    qInfo() << "ToolDownloadWorker: Found Apktool JAR at" << foundPath;
+                    return foundPath;
                 }
             }
         }
@@ -420,11 +435,14 @@ QString ToolDownloadWorker::findExecutableInExtracted(const QString &extractedPa
     case UberApkSigner:
         // Look for any JAR file containing "uber-apk-signer" in the name (handles versioned names)
         {
-            QDir dir(extractedPath);
-            QStringList files = dir.entryList(QDir::Files, QDir::Name);
+            QDir uasDir(extractedPath);
+            QStringList files = uasDir.entryList(QDir::Files, QDir::Name);
+            qInfo() << "ToolDownloadWorker: UberApkSigner - files in directory:" << files;
             for (const QString &file : files) {
                 if (file.contains("uber-apk-signer", Qt::CaseInsensitive) && file.endsWith(".jar", Qt::CaseInsensitive)) {
-                    return dir.absoluteFilePath(file);
+                    QString foundPath = uasDir.absoluteFilePath(file);
+                    qInfo() << "ToolDownloadWorker: Found UberApkSigner JAR at" << foundPath;
+                    return foundPath;
                 }
             }
         }
