@@ -451,14 +451,16 @@ QString ToolDownloadWorker::findExecutableInExtracted(const QString &extractedPa
         executableNames << "uber-apk-signer.jar";
         break;
     case ILSpyCmd:
-        // ILSpyCmd can be in various subdirectories, search more broadly
-        executableNames << "ilspycmd.exe" << "ILSpyCmd.exe" << "ilspycmd" << "ILSpyCmd";
+        // ILSpy.exe is the main executable in ILSpy_binaries releases
+        // ilspycmd.exe is the command-line version (may not be included in all releases)
+        executableNames << "ILSpy.exe" << "ilspy.exe" << "ilspycmd.exe" << "ILSpyCmd.exe" 
+                        << "ilspycmd" << "ILSpyCmd";
         // Also check common subdirectories in ILSpy releases
         {
             QDir ilspyDir(extractedPath);
             QStringList entries = ilspyDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
             for (const QString &entry : entries) {
-                executableNames << entry + "/ilspycmd.exe" << entry + "/ILSpyCmd.exe";
+                executableNames << entry + "/ILSpy.exe" << entry + "/ilspycmd.exe" << entry + "/ILSpyCmd.exe";
             }
         }
         break;
@@ -571,9 +573,10 @@ QString ToolDownloadWorker::findExecutableInSystemLocations()
     case ILSpyCmd:
     {
 #ifdef Q_OS_WIN
-        // Check common installation paths for ILSpyCmd
+        // Check common installation paths for ILSpy
         QStringList ilspyPaths;
-        ilspyPaths << QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/tools/ilspycmd"
+        ilspyPaths << QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/tools/ilspy"
+                   << QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/tools/ilspycmd"
                    << "C:/Program Files/ILSpy"
                    << "C:/Program Files (x86)/ILSpy";
         
@@ -581,8 +584,8 @@ QString ToolDownloadWorker::findExecutableInSystemLocations()
             QDir dir(basePath);
             if (!dir.exists()) continue;
             
-            // Search recursively for ilspycmd.exe
-            QDirIterator it(basePath, QStringList() << "ilspycmd.exe" << "ILSpyCmd.exe", 
+            // Search recursively for ILSpy.exe or ilspycmd.exe
+            QDirIterator it(basePath, QStringList() << "ILSpy.exe" << "ilspy.exe" << "ilspycmd.exe" << "ILSpyCmd.exe", 
                            QDir::Files, QDirIterator::Subdirectories);
             if (it.hasNext()) {
                 return it.next();
@@ -592,6 +595,9 @@ QString ToolDownloadWorker::findExecutableInSystemLocations()
         // Linux/macOS: Check if ilspycmd is in PATH or common locations
         if (QFile::exists("/usr/local/bin/ilspycmd")) {
             return "/usr/local/bin/ilspycmd";
+        }
+        if (QFile::exists("/usr/local/bin/ilspy")) {
+            return "/usr/local/bin/ilspy";
         }
 #endif
         return QString();
