@@ -127,6 +127,8 @@ private:
     bool checkUnityDecompilation();
     QString collectGameContext();
     QString categorizeClass(const QString &className, const QString &content);
+    int calculateClassPriority(const QString &className, const QString &content, 
+                               const QStringList &high, const QStringList &medium, const QStringList &low);
     bool runILSpyDecompilation();
     bool runILSpyOnDummyDlls();
     bool runIl2CppDumper();
