@@ -132,7 +132,9 @@ void DllStudio::analyzeWithAI() {
         m_AiInsights->append("<div style='color: #7ee787; white-space: pre-wrap;'>" + response + "</div>");
         
         // Save analysis to file
-        QString reportPath = m_ProjectPath + "/AI_DLL_ANALYSIS_" + dllName.replace(".dll", "") + ".md";
+        QString baseName = dllName;
+        baseName.replace(".dll", "");
+        QString reportPath = m_ProjectPath + "/AI_DLL_ANALYSIS_" + baseName + ".md";
         QFile report(reportPath);
         if (report.open(QIODevice::WriteOnly)) {
             report.write(("# AI Analysis: " + dllName + "\n\n" + response).toUtf8());
