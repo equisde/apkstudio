@@ -220,4 +220,112 @@ public:
     static QString getToolExecutable(const QString &toolName);
 };
 
+// =============================================================================
+// Mod Menu Code Generator - Generates complete C++ mod menu projects locally
+// =============================================================================
+
+struct GameClassInfo {
+    QString className;
+    QString nameSpace;
+    QStringList fields;      // "fieldName|type|offset"
+    QStringList methods;     // "methodName|returnType|params|rva"
+};
+
+struct ModTarget {
+    QString modId;
+    QString displayName;
+    QString targetClass;
+    QString targetField;
+    QString targetMethod;
+    QString fieldType;
+    QString offset;
+    QString rva;
+    int value;
+    QString hookType;        // "field_write", "method_replace", "method_return"
+};
+
+class ModMenuCodeGenerator : public QObject
+{
+    Q_OBJECT
+public:
+    explicit ModMenuCodeGenerator(const QString &projectPath, QObject *parent = nullptr);
+    
+    // Parse dump.cs and extract game class info
+    bool parseDumpCs();
+    
+    // Find targets for selected mods
+    QList<ModTarget> findModTargets(const QList<ModOption> &mods);
+    
+    // Generate complete mod menu project
+    bool generateProject(const QString &outputDir, const QList<ModTarget> &targets, const QString &style);
+    
+    // Get extracted class info
+    QList<GameClassInfo> getGameClasses() const { return m_GameClasses; }
+    
+signals:
+    void progressUpdated(int percent, const QString &status);
+    void generationComplete(bool success, const QString &outputPath);
+    void logMessage(const QString &message, const QString &type);
+    
+private:
+    // Template generators
+    QString generateMainCpp(const QList<ModTarget> &targets);
+    QString generateGameDefsHpp(const QList<ModTarget> &targets);
+    QString generateModMenuHpp(const QList<ModTarget> &targets);
+    QString generateIl2cppUtilsHpp();
+    QString generateIl2cppUtilsCpp();
+    QString generateAndroidMk();
+    QString generateApplicationMk();
+    QString generateBuildSh();
+    QString generateFridaScript(const QList<ModTarget> &targets);
+    QString generateReadme(const QList<ModTarget> &targets);
+    
+    // Helper methods
+    QString modIdToVarName(const QString &modId);
+    QString modIdToFunctionName(const QString &modId);
+    QString generateHookCode(const ModTarget &target);
+    QString generateMenuToggle(const ModTarget &target);
+    
+    QString m_ProjectPath;
+    QString m_DumpContent;
+    QList<GameClassInfo> m_GameClasses;
+    QMap<QString, QString> m_FieldPatterns;  // modId -> regex pattern for field search
+    QMap<QString, QString> m_MethodPatterns; // modId -> regex pattern for method search
+};
+
+// Full project generator dialog
+class ModMenuProjectDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    explicit ModMenuProjectDialog(const QString &projectPath, const QList<ModOption> &mods, QWidget *parent = nullptr);
+
+private slots:
+    void onGenerateClicked();
+    void onPreviewFile(int index);
+    void onSaveProject();
+    void onOpenFolder();
+
+private:
+    void setupUI();
+    void updatePreview(const QString &fileName, const QString &content);
+    
+    QString m_ProjectPath;
+    QList<ModOption> m_Mods;
+    ModMenuCodeGenerator *m_Generator;
+    QList<ModTarget> m_Targets;
+    
+    QComboBox *m_StyleCombo;
+    QListWidget *m_FilesList;
+    QTextBrowser *m_PreviewArea;
+    QProgressBar *m_Progress;
+    QLabel *m_StatusLabel;
+    QPushButton *m_GenerateBtn;
+    QPushButton *m_SaveBtn;
+    QPushButton *m_OpenFolderBtn;
+    
+    QMap<QString, QString> m_GeneratedFiles;
+    QString m_OutputDir;
+};
+
 #endif // GAMEMODTOOLS_H

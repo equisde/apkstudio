@@ -3,6 +3,7 @@
 #include <QBoxLayout>
 #include <QDateTime>
 #include <QDebug>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -32,6 +33,7 @@
 #include <QToolBar>
 #include <QScrollArea>
 #include <QDialogButtonBox>
+#include <QPlainTextEdit>
 
 // ============== Game Engine Detector ==============
 
@@ -1271,9 +1273,19 @@ void GameModStudio::generateModMenu()
         return;
     }
     
-    auto dialog = new ModMenuGeneratorDialog(m_ProjectPath, mods, this);
-    dialog->exec();
-    dialog->deleteLater();
+    // Check if dump.cs exists for the new generator
+    if (QFile::exists(m_ProjectPath + "/dump/dump.cs")) {
+        // Use the new project generator
+        auto dialog = new ModMenuProjectDialog(m_ProjectPath, mods, this);
+        dialog->exec();
+        dialog->deleteLater();
+    } else {
+        // Fall back to AI-based generator
+        logMessage("dump.cs not found - using AI-based generation (less accurate)", "warning");
+        auto dialog = new ModMenuGeneratorDialog(m_ProjectPath, mods, this);
+        dialog->exec();
+        dialog->deleteLater();
+    }
 }
 
 void GameModStudio::openAIChat()
@@ -2557,4 +2569,1301 @@ GameValueEditorDialog::GameValueEditorDialog(const QString &projectPath, QWidget
     connect(saveBtn, &QPushButton::clicked, this, [this]() {
         QMessageBox::information(this, tr("Saved"), tr("Game values saved. Recompile to apply."));
     });
+}
+
+// =============================================================================
+// ModMenuCodeGenerator Implementation
+// =============================================================================
+
+ModMenuCodeGenerator::ModMenuCodeGenerator(const QString &projectPath, QObject *parent)
+    : QObject(parent), m_ProjectPath(projectPath)
+{
+    // Initialize field patterns for mod types
+    m_FieldPatterns["coins"] = "(coin|gold|money|cash|credit|currency|balance)";
+    m_FieldPatterns["gems"] = "(gem|diamond|ruby|crystal|jewel)";
+    m_FieldPatterns["energy"] = "(energy|stamina|power|fuel)";
+    m_FieldPatterns["health"] = "(health|hp|hitpoint|life)";
+    m_FieldPatterns["damage"] = "(damage|attack|atk|dmg)";
+    m_FieldPatterns["speed"] = "(speed|spd|velocity|movespeed)";
+    m_FieldPatterns["exp"] = "(experience|exp|xp)";
+    m_FieldPatterns["level"] = "(level|lvl)";
+    m_FieldPatterns["keys"] = "(key|ticket)";
+    m_FieldPatterns["stars"] = "(star|rating)";
+    m_FieldPatterns["hearts"] = "(heart|life|lives)";
+    m_FieldPatterns["vip"] = "(vip|premium|pro|subscriber)";
+    
+    // Initialize method patterns
+    m_MethodPatterns["coins"] = "(Add|Set|Grant|Give|Spend|Deduct)(Coin|Gold|Money|Cash|Currency)";
+    m_MethodPatterns["gems"] = "(Add|Set|Grant|Give|Spend|Deduct)(Gem|Diamond|Crystal)";
+    m_MethodPatterns["energy"] = "(Add|Set|Consume|Spend|Refill)(Energy|Stamina|Power)";
+    m_MethodPatterns["health"] = "(Add|Set|Take|Deal|Heal)(Health|HP|Damage)";
+    m_MethodPatterns["damage"] = "(Add|Set|Deal|Calculate)(Damage|Attack)";
+    m_MethodPatterns["free_iap"] = "(Purchase|Buy|CanAfford|GetPrice|ProcessPurchase)";
+    m_MethodPatterns["unlock_items"] = "(Unlock|HasItem|IsUnlocked|CanAccess)";
+    m_MethodPatterns["no_ads"] = "(ShowAd|DisplayAd|LoadAd|IsAdReady)";
+    m_MethodPatterns["vip"] = "(Is|Get|Check)(Premium|VIP|Pro|Subscriber)";
+    m_MethodPatterns["no_cooldown"] = "(Get|Start|Check|Is)(Cooldown|Timer|Ready)";
+}
+
+bool ModMenuCodeGenerator::parseDumpCs()
+{
+    QString dumpPath = m_ProjectPath + "/dump/dump.cs";
+    if (!QFile::exists(dumpPath)) {
+        emit logMessage("dump.cs not found. Run IL2CPP Dumper first.", "error");
+        return false;
+    }
+    
+    QFile file(dumpPath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        emit logMessage("Failed to open dump.cs", "error");
+        return false;
+    }
+    
+    m_DumpContent = QString::fromUtf8(file.readAll());
+    file.close();
+    
+    emit progressUpdated(10, "Parsing dump.cs...");
+    emit logMessage(QString("Loaded dump.cs (%1 MB)").arg(m_DumpContent.size() / 1024.0 / 1024.0, 0, 'f', 2), "info");
+    
+    // Parse classes
+    QStringList lines = m_DumpContent.split('\n');
+    QString currentNamespace;
+    QString currentClassName;
+    GameClassInfo currentClass;
+    bool inClass = false;
+    int braceCount = 0;
+    
+    QRegularExpression namespaceRegex("^namespace\\s+([\\w\\.]+)");
+    QRegularExpression classRegex("^\\s*(public|internal|private)?\\s*(sealed|abstract|static)?\\s*(class|struct)\\s+(\\w+)");
+    QRegularExpression fieldRegex("^\\s*(public|private|protected)?\\s*(static)?\\s*(readonly)?\\s*(int|float|double|long|bool|byte|short|string|Int32|Int64|Single|Double|Boolean|String)\\s+(\\w+)\\s*;\\s*//\\s*(0x[0-9A-Fa-f]+)");
+    QRegularExpression methodRegex("^\\s*(public|private|protected)?\\s*(static)?\\s*(virtual|override)?\\s*(void|int|float|bool|string|\\w+)\\s+(\\w+)\\s*\\(([^)]*)\\)[^/]*//\\s*RVA:\\s*(0x[0-9A-Fa-f]+)");
+    
+    // Class name patterns to prioritize
+    QStringList priorityPatterns = {
+        "PlayerData", "UserData", "GameData", "SaveData", "ProfileData",
+        "CurrencyManager", "CoinManager", "GemManager", "WalletManager", "EconomyManager",
+        "HealthManager", "DamageManager", "CombatManager", "StatsManager",
+        "InventoryManager", "ItemManager", "ShopManager", "StoreManager",
+        "EnergyManager", "TimerManager", "CooldownManager",
+        "PlayerController", "PlayerStats", "GameManager"
+    };
+    
+    // Classes to skip
+    QStringList skipPatterns = {
+        "UI", "Animation", "Tween", "Renderer", "Shader", "Material", "Canvas",
+        "Button", "Text", "Image", "Panel", "Scroll", "Layout", "Sprite",
+        "Particle", "Audio", "Sound", "Music", "Effect", "DOTween", "LeanTween"
+    };
+    
+    int classCount = 0;
+    
+    for (int i = 0; i < lines.size(); i++) {
+        const QString &line = lines[i];
+        
+        // Track namespace
+        QRegularExpressionMatch nsMatch = namespaceRegex.match(line);
+        if (nsMatch.hasMatch()) {
+            currentNamespace = nsMatch.captured(1);
+            continue;
+        }
+        
+        // Detect class
+        QRegularExpressionMatch classMatch = classRegex.match(line);
+        if (classMatch.hasMatch()) {
+            // Save previous class if valid
+            if (!currentClass.className.isEmpty() && 
+                (!currentClass.fields.isEmpty() || !currentClass.methods.isEmpty())) {
+                m_GameClasses.append(currentClass);
+                classCount++;
+            }
+            
+            currentClassName = classMatch.captured(4);
+            
+            // Check if should skip
+            bool shouldSkip = false;
+            for (const QString &skip : skipPatterns) {
+                if (currentClassName.contains(skip, Qt::CaseInsensitive)) {
+                    shouldSkip = true;
+                    break;
+                }
+            }
+            
+            if (shouldSkip) {
+                inClass = false;
+                continue;
+            }
+            
+            // Check priority
+            bool isPriority = false;
+            for (const QString &pattern : priorityPatterns) {
+                if (currentClassName.contains(pattern, Qt::CaseInsensitive)) {
+                    isPriority = true;
+                    break;
+                }
+            }
+            
+            currentClass = GameClassInfo();
+            currentClass.className = currentClassName;
+            currentClass.nameSpace = currentNamespace;
+            inClass = true;
+            braceCount = 0;
+            continue;
+        }
+        
+        if (inClass) {
+            braceCount += line.count('{') - line.count('}');
+            if (braceCount < 0) {
+                inClass = false;
+                continue;
+            }
+            
+            // Extract fields
+            QRegularExpressionMatch fieldMatch = fieldRegex.match(line);
+            if (fieldMatch.hasMatch()) {
+                QString fieldName = fieldMatch.captured(5);
+                QString fieldType = fieldMatch.captured(4);
+                QString offset = fieldMatch.captured(6);
+                currentClass.fields.append(QString("%1|%2|%3").arg(fieldName, fieldType, offset));
+            }
+            
+            // Extract methods
+            QRegularExpressionMatch methodMatch = methodRegex.match(line);
+            if (methodMatch.hasMatch()) {
+                QString methodName = methodMatch.captured(5);
+                QString returnType = methodMatch.captured(4);
+                QString params = methodMatch.captured(6);
+                QString rva = methodMatch.captured(7);
+                currentClass.methods.append(QString("%1|%2|%3|%4").arg(methodName, returnType, params, rva));
+            }
+        }
+        
+        // Progress update every 10000 lines
+        if (i % 10000 == 0) {
+            int progress = 10 + (i * 30 / lines.size());
+            emit progressUpdated(progress, QString("Parsing line %1/%2...").arg(i).arg(lines.size()));
+        }
+    }
+    
+    // Save last class
+    if (!currentClass.className.isEmpty() && 
+        (!currentClass.fields.isEmpty() || !currentClass.methods.isEmpty())) {
+        m_GameClasses.append(currentClass);
+    }
+    
+    emit progressUpdated(40, QString("Found %1 relevant classes").arg(m_GameClasses.size()));
+    emit logMessage(QString("Extracted %1 game classes with fields/methods").arg(m_GameClasses.size()), "success");
+    
+    return !m_GameClasses.isEmpty();
+}
+
+QList<ModTarget> ModMenuCodeGenerator::findModTargets(const QList<ModOption> &mods)
+{
+    QList<ModTarget> targets;
+    
+    emit progressUpdated(45, "Finding mod targets...");
+    
+    for (const ModOption &mod : mods) {
+        ModTarget target;
+        target.modId = mod.id;
+        target.displayName = mod.name;
+        target.value = mod.value;
+        
+        // Get pattern for this mod type
+        QString fieldPattern = m_FieldPatterns.value(mod.id);
+        QString methodPattern = m_MethodPatterns.value(mod.id);
+        
+        if (fieldPattern.isEmpty() && methodPattern.isEmpty()) {
+            // Custom mod - use the customValue as hint
+            if (!mod.customValue.isEmpty()) {
+                fieldPattern = mod.customValue;
+                methodPattern = mod.customValue;
+            } else {
+                continue;
+            }
+        }
+        
+        QRegularExpression fieldRx(fieldPattern, QRegularExpression::CaseInsensitiveOption);
+        QRegularExpression methodRx(methodPattern, QRegularExpression::CaseInsensitiveOption);
+        
+        // Search through classes
+        bool found = false;
+        for (const GameClassInfo &classInfo : m_GameClasses) {
+            // Search fields
+            if (!fieldPattern.isEmpty()) {
+                for (const QString &field : classInfo.fields) {
+                    QStringList parts = field.split('|');
+                    if (parts.size() >= 3) {
+                        QString fieldName = parts[0];
+                        QString fieldType = parts[1];
+                        QString offset = parts[2];
+                        
+                        if (fieldRx.match(fieldName).hasMatch()) {
+                            target.targetClass = classInfo.nameSpace.isEmpty() ? 
+                                classInfo.className : 
+                                classInfo.nameSpace + "." + classInfo.className;
+                            target.targetField = fieldName;
+                            target.fieldType = fieldType;
+                            target.offset = offset;
+                            target.hookType = "field_write";
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (found) break;
+            
+            // Search methods
+            if (!methodPattern.isEmpty()) {
+                for (const QString &method : classInfo.methods) {
+                    QStringList parts = method.split('|');
+                    if (parts.size() >= 4) {
+                        QString methodName = parts[0];
+                        QString returnType = parts[1];
+                        QString params = parts[2];
+                        QString rva = parts[3];
+                        
+                        if (methodRx.match(methodName).hasMatch()) {
+                            target.targetClass = classInfo.nameSpace.isEmpty() ? 
+                                classInfo.className : 
+                                classInfo.nameSpace + "." + classInfo.className;
+                            target.targetMethod = methodName;
+                            target.fieldType = returnType;
+                            target.rva = rva;
+                            target.hookType = returnType == "void" ? "method_replace" : "method_return";
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (found) break;
+        }
+        
+        if (found) {
+            targets.append(target);
+            emit logMessage(QString("Found target for %1: %2.%3 @ %4")
+                .arg(mod.name, target.targetClass, 
+                     target.targetField.isEmpty() ? target.targetMethod : target.targetField,
+                     target.offset.isEmpty() ? target.rva : target.offset), "info");
+        } else {
+            // Still add it but without specific target - AI will need to fill in
+            target.hookType = "placeholder";
+            targets.append(target);
+            emit logMessage(QString("No specific target found for %1 - using placeholder").arg(mod.name), "warning");
+        }
+    }
+    
+    emit progressUpdated(60, QString("Found %1/%2 mod targets").arg(targets.size()).arg(mods.size()));
+    return targets;
+}
+
+bool ModMenuCodeGenerator::generateProject(const QString &outputDir, const QList<ModTarget> &targets, const QString &style)
+{
+    emit progressUpdated(65, "Generating project files...");
+    
+    QDir dir(outputDir);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+    
+    // Create jni directory structure
+    dir.mkpath("jni");
+    dir.mkpath("jni/imgui");
+    dir.mkpath("jni/imgui/backends");
+    dir.mkpath("jni/dobby/include");
+    
+    bool success = true;
+    
+    if (style.contains("Frida", Qt::CaseInsensitive)) {
+        // Generate Frida script
+        QString fridaScript = generateFridaScript(targets);
+        QFile fridaFile(outputDir + "/mod_menu.js");
+        if (fridaFile.open(QIODevice::WriteOnly)) {
+            fridaFile.write(fridaScript.toUtf8());
+            fridaFile.close();
+            emit logMessage("Generated mod_menu.js", "info");
+        }
+    } else {
+        // Generate C++ project
+        emit progressUpdated(70, "Generating main.cpp...");
+        QFile mainFile(outputDir + "/jni/main.cpp");
+        if (mainFile.open(QIODevice::WriteOnly)) {
+            mainFile.write(generateMainCpp(targets).toUtf8());
+            mainFile.close();
+        }
+        
+        emit progressUpdated(75, "Generating game_defs.hpp...");
+        QFile defsFile(outputDir + "/jni/game_defs.hpp");
+        if (defsFile.open(QIODevice::WriteOnly)) {
+            defsFile.write(generateGameDefsHpp(targets).toUtf8());
+            defsFile.close();
+        }
+        
+        emit progressUpdated(80, "Generating mod_menu.hpp...");
+        QFile menuFile(outputDir + "/jni/mod_menu.hpp");
+        if (menuFile.open(QIODevice::WriteOnly)) {
+            menuFile.write(generateModMenuHpp(targets).toUtf8());
+            menuFile.close();
+        }
+        
+        emit progressUpdated(85, "Generating IL2CPP utilities...");
+        QFile utilsHpp(outputDir + "/jni/il2cpp_utils.hpp");
+        if (utilsHpp.open(QIODevice::WriteOnly)) {
+            utilsHpp.write(generateIl2cppUtilsHpp().toUtf8());
+            utilsHpp.close();
+        }
+        
+        QFile utilsCpp(outputDir + "/jni/il2cpp_utils.cpp");
+        if (utilsCpp.open(QIODevice::WriteOnly)) {
+            utilsCpp.write(generateIl2cppUtilsCpp().toUtf8());
+            utilsCpp.close();
+        }
+        
+        emit progressUpdated(90, "Generating build files...");
+        QFile mkFile(outputDir + "/jni/Android.mk");
+        if (mkFile.open(QIODevice::WriteOnly)) {
+            mkFile.write(generateAndroidMk().toUtf8());
+            mkFile.close();
+        }
+        
+        QFile appMk(outputDir + "/jni/Application.mk");
+        if (appMk.open(QIODevice::WriteOnly)) {
+            appMk.write(generateApplicationMk().toUtf8());
+            appMk.close();
+        }
+        
+        QFile buildSh(outputDir + "/build.sh");
+        if (buildSh.open(QIODevice::WriteOnly)) {
+            buildSh.write(generateBuildSh().toUtf8());
+            buildSh.close();
+        }
+    }
+    
+    emit progressUpdated(95, "Generating README...");
+    QFile readme(outputDir + "/README.md");
+    if (readme.open(QIODevice::WriteOnly)) {
+        readme.write(generateReadme(targets).toUtf8());
+        readme.close();
+    }
+    
+    emit progressUpdated(100, "Project generation complete!");
+    emit generationComplete(success, outputDir);
+    
+    return success;
+}
+
+QString ModMenuCodeGenerator::modIdToVarName(const QString &modId)
+{
+    QString var = "b_" + modId;
+    var.replace("_", "");
+    var[2] = var[2].toUpper();
+    return var;
+}
+
+QString ModMenuCodeGenerator::modIdToFunctionName(const QString &modId)
+{
+    QString func = modId;
+    QStringList parts = func.split('_');
+    QString result;
+    for (const QString &part : parts) {
+        result += part[0].toUpper() + part.mid(1);
+    }
+    return result;
+}
+
+QString ModMenuCodeGenerator::generateMainCpp(const QList<ModTarget> &targets)
+{
+    QString code = R"(/*
+ * AUTO-GENERATED MOD MENU - IL2CPP Unity Game
+ * Generated by APK Studio
+ * 
+ * This mod menu uses Dobby for inline hooking and ImGui for the UI.
+ * 
+ * BUILD INSTRUCTIONS:
+ * 1. Install Android NDK (r25c recommended)
+ * 2. Run: ./build.sh
+ * 3. Output will be in libs/arm64-v8a/libmodmenu.so
+ */
+
+#include <jni.h>
+#include <string>
+#include <thread>
+#include <chrono>
+#include <android/log.h>
+#include <EGL/egl.h>
+#include <GLES3/gl3.h>
+
+// Dobby hooking framework
+#include "dobby/include/dobby.h"
+
+// ImGui
+#include "imgui/imgui.h"
+#include "imgui/backends/imgui_impl_opengl3.h"
+#include "imgui/backends/imgui_impl_android.h"
+
+// Custom headers
+#include "il2cpp_utils.hpp"
+#include "game_defs.hpp"
+#include "mod_menu.hpp"
+
+#define LOG_TAG "MODMENU"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+// EGL hook pointers
+static EGLDisplay g_EglDisplay = EGL_NO_DISPLAY;
+static EGLSurface g_EglSurface = EGL_NO_SURFACE;
+static EGLContext g_EglContext = EGL_NO_CONTEXT;
+EGLAPI EGLBoolean (*old_eglSwapBuffers)(EGLDisplay dpy, EGLSurface sur);
+
+)";
+
+    // Generate hook function pointers for each target
+    code += "// ============ HOOK FUNCTION POINTERS ============\n\n";
+    
+    for (const ModTarget &target : targets) {
+        if (target.hookType == "placeholder") continue;
+        
+        QString funcName = modIdToFunctionName(target.modId);
+        if (target.hookType == "method_replace" || target.hookType == "method_return") {
+            code += QString("void* %1_Addr = nullptr;\n").arg(funcName);
+            if (target.fieldType == "void") {
+                code += QString("void (*old_%1)(void* __this);\n\n").arg(funcName);
+            } else if (target.fieldType == "int" || target.fieldType == "Int32") {
+                code += QString("int (*old_%1)(void* __this);\n\n").arg(funcName);
+            } else if (target.fieldType == "float" || target.fieldType == "Single") {
+                code += QString("float (*old_%1)(void* __this);\n\n").arg(funcName);
+            } else if (target.fieldType == "bool" || target.fieldType == "Boolean") {
+                code += QString("bool (*old_%1)(void* __this);\n\n").arg(funcName);
+            } else {
+                code += QString("void* (*old_%1)(void* __this);\n\n").arg(funcName);
+            }
+        }
+    }
+    
+    // Generate hook implementations
+    code += "// ============ HOOK IMPLEMENTATIONS ============\n\n";
+    
+    for (const ModTarget &target : targets) {
+        if (target.hookType == "placeholder") continue;
+        
+        QString funcName = modIdToFunctionName(target.modId);
+        QString varName = modIdToVarName(target.modId);
+        
+        if (target.hookType == "method_return") {
+            if (target.fieldType == "int" || target.fieldType == "Int32") {
+                code += QString(R"(int new_%1(void* __this) {
+    if (Mod::%2) {
+        LOGI("%3: Returning modified value %4");
+        return %4;
+    }
+    return old_%1(__this);
+}
+
+)").arg(funcName, varName, target.displayName).arg(target.value);
+            } else if (target.fieldType == "bool" || target.fieldType == "Boolean") {
+                code += QString(R"(bool new_%1(void* __this) {
+    if (Mod::%2) {
+        LOGI("%3: Returning true");
+        return true;
+    }
+    return old_%1(__this);
+}
+
+)").arg(funcName, varName, target.displayName);
+            } else if (target.fieldType == "float" || target.fieldType == "Single") {
+                code += QString(R"(float new_%1(void* __this) {
+    if (Mod::%2) {
+        LOGI("%3: Returning modified value %4.0f");
+        return %4.0f;
+    }
+    return old_%1(__this);
+}
+
+)").arg(funcName, varName, target.displayName).arg(target.value);
+            }
+        } else if (target.hookType == "method_replace") {
+            code += QString(R"(void new_%1(void* __this) {
+    if (Mod::%2) {
+        LOGI("%3: Skipping original method");
+        return; // Don't call original
+    }
+    old_%1(__this);
+}
+
+)").arg(funcName, varName, target.displayName);
+        }
+    }
+    
+    // Setup hooks function
+    code += R"(// ============ HOOK SETUP ============
+
+void SetupHooks() {
+    LOGI("Setting up game hooks...");
+    
+    if (!InitIL2CPP()) {
+        LOGE("Failed to initialize IL2CPP!");
+        return;
+    }
+    
+)";
+
+    for (const ModTarget &target : targets) {
+        if (target.hookType == "placeholder") continue;
+        
+        QString funcName = modIdToFunctionName(target.modId);
+        
+        if (!target.rva.isEmpty()) {
+            code += QString(R"(    // %1
+    %2_Addr = (void*)GetActualOffset(%3);
+    if (%2_Addr) {
+        DobbyHook(%2_Addr, (dobby_dummy_func_t)new_%2, (dobby_dummy_func_t*)&old_%2);
+        LOGI("Hooked %1 @ %3");
+    }
+    
+)").arg(target.displayName, funcName, target.rva);
+        }
+    }
+    
+    code += R"(    LOGI("All hooks applied successfully!");
+}
+
+)";
+    
+    // Rest of main.cpp (ImGui setup, EGL hook, JNI)
+    code += R"(// ============ IMGUI SETUP ============
+
+void SetupImGuiStyle() {
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowPadding = ImVec2(8, 8);
+    style.WindowRounding = 6.0f;
+    style.FramePadding = ImVec2(5, 5);
+    style.FrameRounding = 4.0f;
+    
+    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.12f, 0.12f, 0.95f);
+    style.Colors[ImGuiCol_TitleBg] = ImVec4(0.16f, 0.29f, 0.48f, 1.00f);
+    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 1.00f);
+    style.Colors[ImGuiCol_Button] = ImVec4(0.26f, 0.59f, 0.98f, 0.40f);
+    style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    style.Colors[ImGuiCol_Checkmark] = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+}
+
+EGLAPI EGLBoolean new_eglSwapBuffers(EGLDisplay dpy, EGLSurface sur) {
+    if (g_EglDisplay != dpy || g_EglSurface != sur) {
+        g_EglDisplay = dpy;
+        g_EglSurface = sur;
+        g_EglContext = eglGetCurrentContext();
+
+        if (g_EglDisplay && g_EglSurface && g_EglContext) {
+            LOGI("Initializing ImGui...");
+            ImGui::CreateContext();
+            ImGuiIO& io = ImGui::GetIO();
+            io.IniFilename = NULL;
+            
+            ImGui_ImplAndroid_Init(nullptr);
+            ImGui_ImplOpenGL3_Init("#version 300 es");
+            SetupImGuiStyle();
+            io.Fonts->AddFontDefault();
+        }
+    }
+
+    if (g_EglDisplay && g_EglSurface && g_EglContext) {
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplAndroid_NewFrame();
+        ImGui::NewFrame();
+
+        DrawModMenu();
+
+        ImGui::EndFrame();
+        ImGui::Render();
+        glViewport(0, 0, (int)ImGui::GetIO().DisplaySize.x, (int)ImGui::GetIO().DisplaySize.y);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
+
+    return old_eglSwapBuffers(dpy, sur);
+}
+
+void InitEGLHook() {
+    LOGI("Hooking eglSwapBuffers...");
+    void* eglSwapBuffers_addr = DobbySymbolResolver("libEGL.so", "eglSwapBuffers");
+    if (eglSwapBuffers_addr) {
+        DobbyHook(eglSwapBuffers_addr, (dobby_dummy_func_t)new_eglSwapBuffers, (dobby_dummy_func_t*)&old_eglSwapBuffers);
+        LOGI("eglSwapBuffers hooked!");
+    }
+}
+
+// ============ JNI ENTRY POINT ============
+
+extern "C" void Java_com_modmenu_ModMenuService_onKeyEvent(JNIEnv* env, jobject thiz, int keyCode, bool isDown) {
+    if (keyCode == 24 && !isDown) { // Volume Up
+        Mod::b_ShowMenu = !Mod::b_ShowMenu;
+        LOGI("Menu toggled: %s", Mod::b_ShowMenu ? "ON" : "OFF");
+    }
+}
+
+extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    LOGI("ModMenu loaded!");
+    
+    std::thread([]() {
+        while (GetLibraryBase("libil2cpp.so") == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        LOGI("libil2cpp.so found, setting up hooks...");
+        SetupHooks();
+        
+        while (GetLibraryBase("libEGL.so") == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        LOGI("libEGL.so found, setting up rendering...");
+        InitEGLHook();
+    }).detach();
+    
+    return JNI_VERSION_1_6;
+}
+)";
+    
+    return code;
+}
+
+QString ModMenuCodeGenerator::generateGameDefsHpp(const QList<ModTarget> &targets)
+{
+    QString code = R"(/*
+ * GAME-SPECIFIC DEFINITIONS
+ * Auto-generated from IL2CPP dump
+ * 
+ * These offsets are specific to YOUR game version.
+ * If the game updates, you may need to regenerate this file.
+ */
+
+#pragma once
+#include "il2cpp_utils.hpp"
+
+namespace Game {
+
+// ============ CLASS POINTERS (resolved at runtime) ============
+)";
+
+    QSet<QString> addedClasses;
+    for (const ModTarget &target : targets) {
+        if (!target.targetClass.isEmpty() && !addedClasses.contains(target.targetClass)) {
+            QString varName = target.targetClass;
+            varName.replace(".", "_");
+            code += QString("inline void* %1_Class = nullptr;\n").arg(varName);
+            addedClasses.insert(target.targetClass);
+        }
+    }
+    
+    code += "\n// ============ METHOD RVAs ============\n";
+    for (const ModTarget &target : targets) {
+        if (!target.rva.isEmpty()) {
+            QString funcName = modIdToFunctionName(target.modId);
+            code += QString("const uintptr_t RVA_%1 = %2;  // %3::%4\n")
+                .arg(funcName, target.rva, target.targetClass, target.targetMethod);
+        }
+    }
+    
+    code += "\n// ============ FIELD OFFSETS ============\n";
+    for (const ModTarget &target : targets) {
+        if (!target.offset.isEmpty()) {
+            QString funcName = modIdToFunctionName(target.modId);
+            code += QString("const uintptr_t OFFSET_%1 = %2;  // %3::%4\n")
+                .arg(funcName, target.offset, target.targetClass, target.targetField);
+        }
+    }
+    
+    code += "\n} // namespace Game\n";
+    
+    return code;
+}
+
+QString ModMenuCodeGenerator::generateModMenuHpp(const QList<ModTarget> &targets)
+{
+    QString code = R"(/*
+ * MOD MENU UI
+ * Draws the ImGui floating menu
+ */
+
+#pragma once
+#include "imgui/imgui.h"
+
+namespace Mod {
+    inline bool b_ShowMenu = false;
+    
+)";
+
+    // Generate toggle variables
+    for (const ModTarget &target : targets) {
+        QString varName = modIdToVarName(target.modId);
+        code += QString("    inline bool %1 = false;  // %2\n").arg(varName, target.displayName);
+    }
+    
+    code += R"(}
+
+inline void DrawModMenu() {
+    if (!Mod::b_ShowMenu) return;
+    
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(350, 450), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(50, 100), ImGuiCond_FirstUseEver);
+    
+    if (ImGui::Begin("Mod Menu", &Mod::b_ShowMenu, ImGuiWindowFlags_NoCollapse)) {
+        ImGui::Text("Toggle Volume Up to show/hide");
+        ImGui::Separator();
+        
+)";
+
+    // Group by category
+    QMap<QString, QList<const ModTarget*>> byCategory;
+    for (const ModTarget &target : targets) {
+        QString cat = "General";
+        if (target.modId.contains("coin") || target.modId.contains("gem") || target.modId.contains("energy"))
+            cat = "Resources";
+        else if (target.modId.contains("health") || target.modId.contains("damage") || target.modId.contains("speed"))
+            cat = "Player";
+        else if (target.modId.contains("unlock") || target.modId.contains("iap") || target.modId.contains("ad"))
+            cat = "Unlocks";
+        byCategory[cat].append(&target);
+    }
+    
+    for (auto it = byCategory.begin(); it != byCategory.end(); ++it) {
+        code += QString("        if (ImGui::CollapsingHeader(\"%1\")) {\n").arg(it.key());
+        for (const ModTarget *target : it.value()) {
+            QString varName = modIdToVarName(target->modId);
+            code += QString("            ImGui::Checkbox(\"%1\", &Mod::%2);\n")
+                .arg(target->displayName, varName);
+        }
+        code += "        }\n";
+    }
+    
+    code += R"(        
+        ImGui::Separator();
+        ImGui::Text("FPS: %.1f", io.Framerate);
+    }
+    ImGui::End();
+}
+)";
+
+    return code;
+}
+
+QString ModMenuCodeGenerator::generateIl2cppUtilsHpp()
+{
+    return R"(/*
+ * IL2CPP UTILITIES
+ * Functions for resolving IL2CPP methods and addresses
+ */
+
+#pragma once
+#include <cstdint>
+#include <string>
+#include <dlfcn.h>
+#include <android/log.h>
+
+#define LOG_TAG "MODMENU"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+extern uintptr_t il2cpp_base;
+
+uintptr_t GetLibraryBase(const char* libraryName);
+bool InitIL2CPP();
+uintptr_t GetActualOffset(uintptr_t rva);
+
+// IL2CPP function typedefs
+typedef void* (*il2cpp_class_from_name_t)(void* image, const char* namespaze, const char* name);
+typedef void* (*il2cpp_class_get_method_from_name_t)(void* klass, const char* name, int argsCount);
+typedef void* (*il2cpp_method_get_function_pointer_t)(void* method);
+
+extern il2cpp_class_from_name_t il2cpp_class_from_name;
+extern il2cpp_class_get_method_from_name_t il2cpp_class_get_method_from_name;
+extern il2cpp_method_get_function_pointer_t il2cpp_method_get_function_pointer;
+)";
+}
+
+QString ModMenuCodeGenerator::generateIl2cppUtilsCpp()
+{
+    return R"(#include "il2cpp_utils.hpp"
+#include <fstream>
+#include <cstring>
+
+uintptr_t il2cpp_base = 0;
+
+il2cpp_class_from_name_t il2cpp_class_from_name = nullptr;
+il2cpp_class_get_method_from_name_t il2cpp_class_get_method_from_name = nullptr;
+il2cpp_method_get_function_pointer_t il2cpp_method_get_function_pointer = nullptr;
+
+uintptr_t GetLibraryBase(const char* libraryName) {
+    char line[512];
+    FILE *f = fopen("/proc/self/maps", "r");
+    if (!f) return 0;
+    
+    while (fgets(line, sizeof(line), f)) {
+        if (strstr(line, libraryName)) {
+            char *addr = strtok(line, "-");
+            uintptr_t base = (uintptr_t)strtoul(addr, NULL, 16);
+            fclose(f);
+            return base;
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
+bool InitIL2CPP() {
+    il2cpp_base = GetLibraryBase("libil2cpp.so");
+    if (il2cpp_base == 0) {
+        LOGE("libil2cpp.so base not found!");
+        return false;
+    }
+    LOGI("libil2cpp.so base: 0x%lx", il2cpp_base);
+    
+    void* handle = dlopen("libil2cpp.so", RTLD_LAZY);
+    if (!handle) {
+        LOGE("Failed to dlopen libil2cpp.so");
+        return false;
+    }
+    
+    il2cpp_class_from_name = (il2cpp_class_from_name_t)dlsym(handle, "il2cpp_class_from_name");
+    il2cpp_class_get_method_from_name = (il2cpp_class_get_method_from_name_t)dlsym(handle, "il2cpp_class_get_method_from_name");
+    il2cpp_method_get_function_pointer = (il2cpp_method_get_function_pointer_t)dlsym(handle, "il2cpp_method_get_function_pointer");
+    
+    LOGI("IL2CPP functions resolved");
+    return true;
+}
+
+uintptr_t GetActualOffset(uintptr_t rva) {
+    return il2cpp_base + rva;
+}
+)";
+}
+
+QString ModMenuCodeGenerator::generateAndroidMk()
+{
+    return R"(LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE           := modmenu
+LOCAL_SRC_FILES        := main.cpp \
+                          il2cpp_utils.cpp
+
+# ImGui sources (you need to add these files)
+# LOCAL_SRC_FILES      += imgui/imgui.cpp \
+#                         imgui/imgui_draw.cpp \
+#                         imgui/imgui_widgets.cpp \
+#                         imgui/backends/imgui_impl_opengl3.cpp \
+#                         imgui/backends/imgui_impl_android.cpp
+
+# Dobby sources (or link pre-built library)
+# LOCAL_STATIC_LIBRARIES := dobby
+
+LOCAL_C_INCLUDES       := $(LOCAL_PATH) \
+                          $(LOCAL_PATH)/imgui \
+                          $(LOCAL_PATH)/imgui/backends \
+                          $(LOCAL_PATH)/dobby/include
+
+LOCAL_CPPFLAGS         := -std=c++17 -Wall -Wextra -O2
+LOCAL_LDLIBS           := -llog -landroid -lGLESv3 -lEGL
+
+include $(BUILD_SHARED_LIBRARY)
+)";
+}
+
+QString ModMenuCodeGenerator::generateApplicationMk()
+{
+    return R"(APP_ABI := arm64-v8a
+APP_PLATFORM := android-24
+APP_STL := c++_static
+APP_OPTIM := release
+)";
+}
+
+QString ModMenuCodeGenerator::generateBuildSh()
+{
+    return R"(#!/bin/bash
+
+# Set your NDK path here
+export NDK_ROOT="${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/25.2.9519653}"
+
+if [ ! -d "$NDK_ROOT" ]; then
+    echo "ERROR: NDK not found at $NDK_ROOT"
+    echo "Please set ANDROID_NDK_HOME or edit NDK_ROOT in this script"
+    exit 1
+fi
+
+echo "Using NDK: $NDK_ROOT"
+echo "Building mod menu..."
+
+cd jni
+$NDK_ROOT/ndk-build clean
+$NDK_ROOT/ndk-build
+
+if [ $? -eq 0 ]; then
+    echo ""
+    echo "SUCCESS! Output: libs/arm64-v8a/libmodmenu.so"
+    echo ""
+    echo "Next steps:"
+    echo "1. Copy libmodmenu.so to your game's APK in lib/arm64-v8a/"
+    echo "2. Modify AndroidManifest.xml to load the library"
+    echo "3. Rebuild and sign the APK"
+else
+    echo "Build failed!"
+    exit 1
+fi
+)";
+}
+
+QString ModMenuCodeGenerator::generateFridaScript(const QList<ModTarget> &targets)
+{
+    QString script = R"(/*
+ * FRIDA MOD MENU SCRIPT
+ * Auto-generated by APK Studio
+ * 
+ * Usage:
+ * frida -U -f <package_name> -l mod_menu.js
+ */
+
+Java.perform(function() {
+    console.log("[*] Frida Mod Menu Loaded!");
+    
+    var il2cpp = Process.findModuleByName("libil2cpp.so");
+    if (!il2cpp) {
+        console.log("[!] libil2cpp.so not found, waiting...");
+        setTimeout(function() {
+            il2cpp = Process.findModuleByName("libil2cpp.so");
+            if (il2cpp) {
+                console.log("[+] libil2cpp.so found at: " + il2cpp.base);
+                applyHooks(il2cpp.base);
+            }
+        }, 3000);
+    } else {
+        console.log("[+] libil2cpp.so found at: " + il2cpp.base);
+        applyHooks(il2cpp.base);
+    }
+});
+
+function applyHooks(base) {
+    console.log("[*] Applying hooks...");
+    
+)";
+
+    for (const ModTarget &target : targets) {
+        if (target.rva.isEmpty()) continue;
+        
+        QString funcName = modIdToFunctionName(target.modId);
+        
+        script += QString(R"(    // %1
+    var %2_addr = base.add(%3);
+    Interceptor.attach(%2_addr, {
+        onEnter: function(args) {
+            console.log("[*] %1 called");
+        },
+        onLeave: function(retval) {
+)").arg(target.displayName, funcName, target.rva);
+
+        if (target.fieldType == "int" || target.fieldType == "Int32") {
+            script += QString("            retval.replace(%1);  // Modified value\n").arg(target.value);
+        } else if (target.fieldType == "bool" || target.fieldType == "Boolean") {
+            script += "            retval.replace(1);  // Always true\n";
+        } else if (target.fieldType == "float" || target.fieldType == "Single") {
+            script += QString("            retval.replace(%1.0);  // Modified value\n").arg(target.value);
+        }
+        
+        script += QString(R"(            console.log("[+] %1: value modified");
+        }
+    });
+    
+)").arg(target.displayName);
+    }
+    
+    script += R"(    console.log("[+] All hooks applied!");
+}
+)";
+    
+    return script;
+}
+
+QString ModMenuCodeGenerator::generateReadme(const QList<ModTarget> &targets)
+{
+    QString readme = R"(# Generated Mod Menu
+
+Auto-generated by APK Studio
+
+## Included Modifications
+
+| Mod | Target | Type | Address |
+|-----|--------|------|---------|
+)";
+
+    for (const ModTarget &target : targets) {
+        QString address = target.rva.isEmpty() ? target.offset : target.rva;
+        QString type = target.hookType;
+        QString targetName = target.targetClass + "::" + 
+            (target.targetField.isEmpty() ? target.targetMethod : target.targetField);
+        readme += QString("| %1 | %2 | %3 | %4 |\n")
+            .arg(target.displayName, targetName, type, address);
+    }
+    
+    readme += R"(
+
+## Build Instructions
+
+### For C++ (Dobby/ImGui)
+
+1. **Install Android NDK** (r25c recommended)
+2. **Download dependencies:**
+   - [Dobby](https://github.com/jmpews/Dobby) → Extract to `jni/dobby/`
+   - [ImGui](https://github.com/ocornut/imgui) → Copy to `jni/imgui/`
+3. **Edit `build.sh`** and set your NDK path
+4. **Run:** `chmod +x build.sh && ./build.sh`
+5. **Output:** `libs/arm64-v8a/libmodmenu.so`
+
+### For Frida
+
+1. **Install Frida:** `pip install frida-tools`
+2. **Run:** `frida -U -f <package_name> -l mod_menu.js`
+
+## Installation
+
+1. Extract the target APK
+2. Copy `libmodmenu.so` to `lib/arm64-v8a/`
+3. Modify `AndroidManifest.xml` to load the library
+4. Repackage and sign the APK
+
+## Toggle Menu
+
+- **Android:** Volume Up button
+- **PC (Emulator):** F1 key
+
+## Disclaimer
+
+This tool is for educational purposes only. Modifying games may violate ToS.
+)";
+
+    return readme;
+}
+
+// =============================================================================
+// ModMenuProjectDialog Implementation
+// =============================================================================
+
+ModMenuProjectDialog::ModMenuProjectDialog(const QString &projectPath, const QList<ModOption> &mods, QWidget *parent)
+    : QDialog(parent), m_ProjectPath(projectPath), m_Mods(mods)
+{
+    setWindowTitle(tr("🎮 Mod Menu Project Generator"));
+    setMinimumSize(1100, 750);
+    
+    m_Generator = new ModMenuCodeGenerator(projectPath, this);
+    
+    connect(m_Generator, &ModMenuCodeGenerator::progressUpdated, this, [this](int percent, const QString &status) {
+        m_Progress->setValue(percent);
+        m_StatusLabel->setText(status);
+    });
+    
+    connect(m_Generator, &ModMenuCodeGenerator::logMessage, this, [this](const QString &msg, const QString &type) {
+        QString color = type == "error" ? "#f85149" : type == "success" ? "#7ee787" : type == "warning" ? "#d29922" : "#8b949e";
+        m_PreviewArea->append(QString("<span style='color: %1;'>%2</span>").arg(color, msg));
+    });
+    
+    setupUI();
+}
+
+void ModMenuProjectDialog::setupUI()
+{
+    auto mainLayout = new QVBoxLayout(this);
+    
+    // Header
+    auto header = new QLabel(tr("<h2>🎮 Complete Mod Menu Project Generator</h2>"
+                                "<p>Generates a ready-to-compile mod menu with all source files.</p>"));
+    header->setStyleSheet("color: #c9d1d9;");
+    mainLayout->addWidget(header);
+    
+    // Options row
+    auto optionsLayout = new QHBoxLayout();
+    optionsLayout->addWidget(new QLabel(tr("Output Style:")));
+    
+    m_StyleCombo = new QComboBox();
+    m_StyleCombo->addItems({
+        tr("C++ with ImGui/Dobby (Native)"),
+        tr("Frida JavaScript Hooks")
+    });
+    m_StyleCombo->setStyleSheet("background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 8px;");
+    optionsLayout->addWidget(m_StyleCombo);
+    
+    m_GenerateBtn = new QPushButton(tr("🚀 Generate Project"));
+    m_GenerateBtn->setStyleSheet("background: #238636; color: white; padding: 10px 20px; font-weight: bold;");
+    optionsLayout->addWidget(m_GenerateBtn);
+    
+    optionsLayout->addStretch();
+    mainLayout->addLayout(optionsLayout);
+    
+    // Progress
+    m_Progress = new QProgressBar();
+    m_Progress->setStyleSheet("QProgressBar::chunk { background-color: #238636; }");
+    mainLayout->addWidget(m_Progress);
+    
+    m_StatusLabel = new QLabel(tr("Ready to generate..."));
+    m_StatusLabel->setStyleSheet("color: #8b949e;");
+    mainLayout->addWidget(m_StatusLabel);
+    
+    // Main content
+    auto splitter = new QSplitter(Qt::Horizontal);
+    
+    // Left: File list
+    auto leftWidget = new QWidget();
+    auto leftLayout = new QVBoxLayout(leftWidget);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->addWidget(new QLabel(tr("<b>Generated Files:</b>")));
+    
+    m_FilesList = new QListWidget();
+    m_FilesList->setStyleSheet("background: #161b22; color: #c9d1d9; border: 1px solid #30363d;");
+    leftLayout->addWidget(m_FilesList);
+    
+    splitter->addWidget(leftWidget);
+    
+    // Right: Preview
+    auto rightWidget = new QWidget();
+    auto rightLayout = new QVBoxLayout(rightWidget);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->addWidget(new QLabel(tr("<b>File Preview:</b>")));
+    
+    m_PreviewArea = new QTextBrowser();
+    m_PreviewArea->setStyleSheet("background: #0d1117; color: #7ee787; font-family: 'Consolas', monospace;");
+    rightLayout->addWidget(m_PreviewArea);
+    
+    splitter->addWidget(rightWidget);
+    splitter->setSizes({250, 800});
+    
+    mainLayout->addWidget(splitter);
+    
+    // Bottom buttons
+    auto btnLayout = new QHBoxLayout();
+    m_SaveBtn = new QPushButton(tr("💾 Save Project"));
+    m_SaveBtn->setStyleSheet("background: #1f6feb; color: white; padding: 10px 20px;");
+    m_SaveBtn->setEnabled(false);
+    
+    m_OpenFolderBtn = new QPushButton(tr("📂 Open Folder"));
+    m_OpenFolderBtn->setStyleSheet("background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 10px 20px;");
+    m_OpenFolderBtn->setEnabled(false);
+    
+    auto closeBtn = new QPushButton(tr("Close"));
+    closeBtn->setStyleSheet("background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 10px 20px;");
+    
+    btnLayout->addStretch();
+    btnLayout->addWidget(m_SaveBtn);
+    btnLayout->addWidget(m_OpenFolderBtn);
+    btnLayout->addWidget(closeBtn);
+    mainLayout->addLayout(btnLayout);
+    
+    // Connections
+    connect(m_GenerateBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onGenerateClicked);
+    connect(m_FilesList, &QListWidget::currentRowChanged, this, &ModMenuProjectDialog::onPreviewFile);
+    connect(m_SaveBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onSaveProject);
+    connect(m_OpenFolderBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onOpenFolder);
+    connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
+}
+
+void ModMenuProjectDialog::onGenerateClicked()
+{
+    m_GenerateBtn->setEnabled(false);
+    m_FilesList->clear();
+    m_GeneratedFiles.clear();
+    m_PreviewArea->clear();
+    
+    // Parse dump.cs first
+    if (!m_Generator->parseDumpCs()) {
+        m_PreviewArea->append("<span style='color: #f85149;'>Failed to parse dump.cs. Run IL2CPP Dumper first.</span>");
+        m_GenerateBtn->setEnabled(true);
+        return;
+    }
+    
+    // Find targets
+    m_Targets = m_Generator->findModTargets(m_Mods);
+    
+    if (m_Targets.isEmpty()) {
+        m_PreviewArea->append("<span style='color: #d29922;'>No mod targets found. Check your mod selection.</span>");
+        m_GenerateBtn->setEnabled(true);
+        return;
+    }
+    
+    // Generate project
+    m_OutputDir = m_ProjectPath + "/mod_menu_project";
+    QString style = m_StyleCombo->currentText();
+    
+    if (m_Generator->generateProject(m_OutputDir, m_Targets, style)) {
+        // Read generated files
+        QDirIterator it(m_OutputDir, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            QString filePath = it.next();
+            QString relativePath = QDir(m_OutputDir).relativeFilePath(filePath);
+            
+            QFile file(filePath);
+            if (file.open(QIODevice::ReadOnly)) {
+                m_GeneratedFiles[relativePath] = QString::fromUtf8(file.readAll());
+                file.close();
+                m_FilesList->addItem(relativePath);
+            }
+        }
+        
+        m_SaveBtn->setEnabled(true);
+        m_OpenFolderBtn->setEnabled(true);
+        m_StatusLabel->setText(tr("✅ Project generated successfully!"));
+    }
+    
+    m_GenerateBtn->setEnabled(true);
+}
+
+void ModMenuProjectDialog::onPreviewFile(int index)
+{
+    if (index < 0) return;
+    
+    QString fileName = m_FilesList->item(index)->text();
+    QString content = m_GeneratedFiles.value(fileName);
+    
+    // Syntax highlighting based on extension
+    if (fileName.endsWith(".cpp") || fileName.endsWith(".hpp") || fileName.endsWith(".h")) {
+        m_PreviewArea->setPlainText(content);
+        m_PreviewArea->setStyleSheet("background: #0d1117; color: #7ee787; font-family: 'Consolas', monospace;");
+    } else if (fileName.endsWith(".js")) {
+        m_PreviewArea->setPlainText(content);
+        m_PreviewArea->setStyleSheet("background: #0d1117; color: #f0c674; font-family: 'Consolas', monospace;");
+    } else if (fileName.endsWith(".md")) {
+        m_PreviewArea->setMarkdown(content);
+        m_PreviewArea->setStyleSheet("background: #0d1117; color: #c9d1d9; font-family: 'Consolas', monospace;");
+    } else {
+        m_PreviewArea->setPlainText(content);
+    }
+}
+
+void ModMenuProjectDialog::onSaveProject()
+{
+    QString dir = QFileDialog::getExistingDirectory(this, tr("Select Output Directory"), m_ProjectPath);
+    if (dir.isEmpty()) return;
+    
+    // Copy all generated files
+    for (auto it = m_GeneratedFiles.begin(); it != m_GeneratedFiles.end(); ++it) {
+        QString targetPath = dir + "/" + it.key();
+        QDir().mkpath(QFileInfo(targetPath).absolutePath());
+        
+        QFile file(targetPath);
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(it.value().toUtf8());
+            file.close();
+        }
+    }
+    
+    QMessageBox::information(this, tr("Saved"), tr("Project saved to: %1").arg(dir));
+}
+
+void ModMenuProjectDialog::onOpenFolder()
+{
+    QDesktopServices::openUrl(QUrl::fromLocalFile(m_OutputDir));
+}
+
+void ModMenuProjectDialog::updatePreview(const QString &fileName, const QString &content)
+{
+    Q_UNUSED(fileName);
+    m_PreviewArea->setPlainText(content);
 }
