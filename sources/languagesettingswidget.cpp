@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -13,6 +14,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTableWidget>
 #include <QTextStream>
 #include <QVBoxLayout>
 #include "languagesettingswidget.h"
@@ -181,11 +183,204 @@ void LanguageSettingsWidget::onLanguageSelected(int index)
     }
 }
 
-void LanguageSettingsWidget::save() {}
-void LanguageSettingsWidget::onAddCustomLanguage() {}
-void LanguageSettingsWidget::onEditTranslation() {}
-void LanguageSettingsWidget::onExportTranslations() {}
-void LanguageSettingsWidget::onImportTranslations() {}
+void LanguageSettingsWidget::save()
+{
+    QSettings settings;
+    QString langCode = m_LanguageCombo->currentData().toString();
+    settings.setValue("language", langCode);
+    settings.sync();
+    s_CurrentLanguage = langCode;
+}
+
+void LanguageSettingsWidget::onAddCustomLanguage()
+{
+    QString langCode = QInputDialog::getText(this, tr("Add Custom Language"),
+        tr("Enter language code (e.g., 'fr', 'de', 'ja'):"));
+    
+    if (langCode.isEmpty()) return;
+    
+    if (s_Translations.contains(langCode)) {
+        QMessageBox::warning(this, tr("Language Exists"),
+            tr("Language '%1' already exists.").arg(langCode));
+        return;
+    }
+    
+    QString langName = QInputDialog::getText(this, tr("Language Name"),
+        tr("Enter display name for '%1':").arg(langCode));
+    
+    if (langName.isEmpty()) langName = langCode.toUpper();
+    
+    // Create empty translation map based on English
+    s_Translations[langCode] = EN_TRANSLATIONS;
+    
+    // Save to file
+    QString customPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/translations";
+    QDir().mkpath(customPath);
+    
+    QFile file(customPath + "/" + langCode + ".json");
+    if (file.open(QIODevice::WriteOnly)) {
+        QJsonObject obj;
+        obj["code"] = langCode;
+        obj["name"] = langName;
+        QJsonObject translations;
+        for (auto it = EN_TRANSLATIONS.constBegin(); it != EN_TRANSLATIONS.constEnd(); ++it) {
+            translations[it.key()] = it.value();
+        }
+        obj["translations"] = translations;
+        file.write(QJsonDocument(obj).toJson());
+        file.close();
+    }
+    
+    // Add to combo
+    m_LanguageCombo->addItem(langName, langCode);
+    m_LanguageCombo->setCurrentIndex(m_LanguageCombo->count() - 1);
+    
+    QMessageBox::information(this, tr("Language Added"),
+        tr("Language '%1' added. You can now edit its translations.").arg(langName));
+}
+
+void LanguageSettingsWidget::onEditTranslation()
+{
+    QString langCode = m_LanguageCombo->currentData().toString();
+    
+    if (!s_Translations.contains(langCode)) {
+        QMessageBox::warning(this, tr("Edit Translation"),
+            tr("No translations found for '%1'.").arg(langCode));
+        return;
+    }
+    
+    // Create a simple editor dialog
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Edit Translations - %1").arg(langCode));
+    dialog.setMinimumSize(600, 400);
+    
+    auto layout = new QVBoxLayout(&dialog);
+    auto table = new QTableWidget(&dialog);
+    table->setColumnCount(2);
+    table->setHorizontalHeaderLabels({tr("Key"), tr("Translation")});
+    table->horizontalHeader()->setStretchLastSection(true);
+    
+    const auto &trans = s_Translations[langCode];
+    table->setRowCount(trans.size());
+    
+    int row = 0;
+    for (auto it = trans.constBegin(); it != trans.constEnd(); ++it, ++row) {
+        auto keyItem = new QTableWidgetItem(it.key());
+        keyItem->setFlags(keyItem->flags() & ~Qt::ItemIsEditable);
+        table->setItem(row, 0, keyItem);
+        table->setItem(row, 1, new QTableWidgetItem(it.value()));
+    }
+    
+    layout->addWidget(table);
+    
+    auto btnBox = new QHBoxLayout();
+    auto saveBtn = new QPushButton(tr("Save"), &dialog);
+    auto cancelBtn = new QPushButton(tr("Cancel"), &dialog);
+    btnBox->addStretch();
+    btnBox->addWidget(saveBtn);
+    btnBox->addWidget(cancelBtn);
+    layout->addLayout(btnBox);
+    
+    connect(saveBtn, &QPushButton::clicked, &dialog, [&]() {
+        for (int r = 0; r < table->rowCount(); ++r) {
+            QString key = table->item(r, 0)->text();
+            QString value = table->item(r, 1)->text();
+            saveCustomTranslation(langCode, key, value);
+        }
+        dialog.accept();
+    });
+    connect(cancelBtn, &QPushButton::clicked, &dialog, &QDialog::reject);
+    
+    dialog.exec();
+}
+
+void LanguageSettingsWidget::onExportTranslations()
+{
+    QString langCode = m_LanguageCombo->currentData().toString();
+    
+    QString filePath = QFileDialog::getSaveFileName(this, tr("Export Translations"),
+        QDir::homePath() + "/" + langCode + "_translations.json",
+        "JSON Files (*.json)");
+    
+    if (filePath.isEmpty()) return;
+    
+    if (!s_Translations.contains(langCode)) {
+        QMessageBox::warning(this, tr("Export"), tr("No translations to export."));
+        return;
+    }
+    
+    QJsonObject obj;
+    obj["code"] = langCode;
+    obj["exported_at"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    
+    QJsonObject translations;
+    const auto &trans = s_Translations[langCode];
+    for (auto it = trans.constBegin(); it != trans.constEnd(); ++it) {
+        translations[it.key()] = it.value();
+    }
+    obj["translations"] = translations;
+    
+    QFile file(filePath);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+        file.close();
+        QMessageBox::information(this, tr("Export Complete"),
+            tr("Translations exported to:\n%1").arg(filePath));
+    } else {
+        QMessageBox::critical(this, tr("Export Failed"),
+            tr("Could not write to file: %1").arg(filePath));
+    }
+}
+
+void LanguageSettingsWidget::onImportTranslations()
+{
+    QString filePath = QFileDialog::getOpenFileName(this, tr("Import Translations"),
+        QDir::homePath(), "JSON Files (*.json)");
+    
+    if (filePath.isEmpty()) return;
+    
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        QMessageBox::critical(this, tr("Import Failed"),
+            tr("Could not read file: %1").arg(filePath));
+        return;
+    }
+    
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    file.close();
+    
+    if (!doc.isObject()) {
+        QMessageBox::critical(this, tr("Import Failed"), tr("Invalid JSON format."));
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    QString langCode = obj["code"].toString();
+    
+    if (langCode.isEmpty()) {
+        QMessageBox::critical(this, tr("Import Failed"), tr("No language code found in file."));
+        return;
+    }
+    
+    QJsonObject translations = obj["translations"].toObject();
+    QMap<QString, QString> transMap;
+    
+    for (auto it = translations.constBegin(); it != translations.constEnd(); ++it) {
+        transMap[it.key()] = it.value().toString();
+    }
+    
+    s_Translations[langCode] = transMap;
+    
+    // Check if language exists in combo, if not add it
+    int idx = m_LanguageCombo->findData(langCode);
+    if (idx < 0) {
+        QString langName = obj.value("name").toString(langCode.toUpper());
+        m_LanguageCombo->addItem(langName, langCode);
+    }
+    
+    QMessageBox::information(this, tr("Import Complete"),
+        tr("Imported %1 translations for '%2'.").arg(transMap.size()).arg(langCode));
+}
 
 QMap<QString, QString> LanguageSettingsWidget::getSupportedLanguages() { return LANGUAGE_NAMES; }
 QString LanguageSettingsWidget::getCurrentLanguage() { return s_CurrentLanguage; }
@@ -201,4 +396,29 @@ QString LanguageSettingsWidget::translate(const QString &key)
 }
 
 void LanguageSettingsWidget::loadTranslations(const QString &langCode) { s_CurrentLanguage = langCode; }
-void LanguageSettingsWidget::saveCustomTranslation(const QString &, const QString &, const QString &) {}
+
+void LanguageSettingsWidget::saveCustomTranslation(const QString &langCode, const QString &key, const QString &value)
+{
+    if (!s_Translations.contains(langCode)) {
+        s_Translations[langCode] = QMap<QString, QString>();
+    }
+    s_Translations[langCode][key] = value;
+    
+    // Persist to disk
+    QString customPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/translations";
+    QDir().mkpath(customPath);
+    
+    QFile file(customPath + "/" + langCode + ".json");
+    if (file.open(QIODevice::WriteOnly)) {
+        QJsonObject obj;
+        obj["code"] = langCode;
+        QJsonObject translations;
+        const auto &trans = s_Translations[langCode];
+        for (auto it = trans.constBegin(); it != trans.constEnd(); ++it) {
+            translations[it.key()] = it.value();
+        }
+        obj["translations"] = translations;
+        file.write(QJsonDocument(obj).toJson());
+        file.close();
+    }
+}

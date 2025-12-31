@@ -6,10 +6,18 @@
 #include <QDirIterator>
 #include <QMessageBox>
 #include <QTimer>
+#include <QProcess>
+#include <QSettings>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 
 NativeStudio::NativeStudio(const QString &projectPath, QWidget *parent)
     : QWidget(parent), m_ProjectPath(projectPath)
 {
+    m_NetworkManager = new QNetworkAccessManager(this);
     setupUI();
     if (!m_ProjectPath.isEmpty()) scanNativeLibs();
 }
@@ -66,32 +74,167 @@ void NativeStudio::runAiBinaryAnalysis() {
         return;
     }
 
-    QString libName = item->text();
-    logMessage("IA is dissecting: " + libName);
+    QString libRelPath = item->text();
+    QString libFullPath = m_ProjectPath + "/" + libRelPath;
+    logMessage("AI analyzing: " + libRelPath);
     
-    // Prompt para analizar seguridad nativa
-    QString prompt = QString("You are a low-level reversing expert. Analyze the binary profile of this Android native library: %1. "
-                             "Check for anti-debug (ptrace), signature verification, and syscall patterns. "
-                             "Suggest offsets for bypassing these protections.")
-                     .arg(libName);
+    // Extract library information
+    QString libInfo = extractLibraryInfo(libFullPath);
+    
+    QString prompt = QString(
+        "You are a low-level Android reverse engineering expert specializing in native code analysis.\n\n"
+        "Analyze this native library information:\n"
+        "**Library:** %1\n"
+        "**Info:**\n%2\n\n"
+        "Provide:\n"
+        "1. **Architecture Analysis**: Identify the target architecture and any optimizations\n"
+        "2. **Security Mechanisms**: Look for anti-debug (ptrace), anti-tampering, root detection in native code\n"
+        "3. **Interesting Functions**: JNI functions, crypto operations, network calls\n"
+        "4. **Hooking Targets**: Suggest Frida hook points with example code\n"
+        "5. **Vulnerabilities**: Memory corruption, format strings, hardcoded secrets\n\n"
+        "Format as Markdown with code examples."
+    ).arg(libRelPath, libInfo);
 
-    // Re-usamos la lógica de askAI (necesitamos añadir el método a NativesStudio o moverlo a una factoría)
-    m_AnalysisReport->append("<h3>AI Native Insights for " + libName + "</h3>");
-    m_AnalysisReport->append("<i>[AI] Scanning ELF headers and symbols...</i>");
+    m_AnalysisReport->append("<h3>AI Native Analysis: " + libRelPath + "</h3>");
+    m_AnalysisReport->append("<i>Analyzing binary structure...</i>");
     
-    // Simulación de respuesta inmediata por ahora, integrable con el motor real
-    QTimer::singleShot(2000, this, [this]() {
-        logMessage("AI Analysis ready. Check the report below.");
+    askAI(prompt, [this](const QString &response) {
+        m_AnalysisReport->append("<div style='color: #7ee787;'>" + response + "</div>");
+        logMessage("AI Analysis complete.");
     });
 }
 
 void NativeStudio::generateNativeHook() {
     if (m_LibsList->selectedItems().isEmpty()) return;
-    QString libName = m_LibsList->currentItem()->text().split("/").last();
-    logMessage("IA generating Frida script for " + libName);
+    QString libRelPath = m_LibsList->currentItem()->text();
+    QString libName = QFileInfo(libRelPath).fileName();
+    logMessage("Generating Frida script for " + libName);
     
-    QString script = "Java.perform(function() {\n  const target = Module.findExportByName('" + libName + "', 'SYMBOL_NAME');\n  Interceptor.attach(target, {\n    onEnter: function(args) { console.log('Hooked!'); }\n  });\n});";
-    m_AnalysisReport->append("<h3>Frida Hook Generated</h3><pre>" + script + "</pre>");
+    QString libInfo = extractLibraryInfo(m_ProjectPath + "/" + libRelPath);
+    
+    QString prompt = QString(
+        "You are a Frida scripting expert. Generate a comprehensive Frida hook script for this Android native library.\n\n"
+        "**Library:** %1\n"
+        "**Info:**\n%2\n\n"
+        "Generate a complete Frida script that:\n"
+        "1. Hooks common security functions (ptrace, fopen on /proc/self/*, fork)\n"
+        "2. Hooks JNI_OnLoad if present\n"
+        "3. Hooks any crypto functions\n"
+        "4. Logs function arguments and return values\n"
+        "5. Includes bypass logic for common protections\n\n"
+        "Output ONLY the JavaScript code, no markdown formatting."
+    ).arg(libName, libInfo);
+    
+    askAI(prompt, [this, libName](const QString &response) {
+        QString script = response;
+        // Clean up if wrapped in code blocks
+        script.replace(QRegularExpression("```javascript\\n?"), "");
+        script.replace(QRegularExpression("```\\n?"), "");
+        
+        m_AnalysisReport->append("<h3>Frida Hook Generated</h3><pre style='background: #0d1117; padding: 10px;'>" + script + "</pre>");
+        
+        // Save to file
+        QString scriptPath = m_ProjectPath + "/frida_hook_" + libName.replace(".so", "") + ".js";
+        QFile f(scriptPath);
+        if (f.open(QIODevice::WriteOnly)) {
+            f.write(script.toUtf8());
+            f.close();
+            logMessage("Script saved: " + scriptPath);
+        }
+    });
+}
+
+QString NativeStudio::extractLibraryInfo(const QString &libPath)
+{
+    QString info;
+    QFileInfo fi(libPath);
+    
+    info += "Size: " + QString::number(fi.size() / 1024) + " KB\n";
+    
+    // Try to get ELF info using file command or readelf
+    QProcess process;
+    
+#ifdef Q_OS_WIN
+    // On Windows, just report basic info
+    info += "Platform: Android Native Library (.so)\n";
+#else
+    // Try file command
+    process.start("file", {libPath});
+    if (process.waitForFinished(3000)) {
+        info += "Type: " + QString::fromUtf8(process.readAllStandardOutput()).trimmed() + "\n";
+    }
+    
+    // Try readelf for symbols
+    process.start("readelf", {"-s", "--wide", libPath});
+    if (process.waitForFinished(5000)) {
+        QString symbols = QString::fromUtf8(process.readAllStandardOutput());
+        QStringList lines = symbols.split('\n');
+        QStringList interestingSymbols;
+        
+        for (const QString &line : lines) {
+            if (line.contains("FUNC") && line.contains("GLOBAL")) {
+                // Extract function name
+                QStringList parts = line.split(QRegularExpression("\\s+"));
+                if (parts.size() > 7) {
+                    QString funcName = parts.last();
+                    if (!funcName.startsWith("_") || funcName.startsWith("Java_") || 
+                        funcName.contains("JNI") || funcName.contains("ptrace") ||
+                        funcName.contains("anti") || funcName.contains("check")) {
+                        interestingSymbols.append(funcName);
+                    }
+                }
+            }
+        }
+        
+        if (!interestingSymbols.isEmpty()) {
+            info += "\nInteresting Symbols (" + QString::number(interestingSymbols.size()) + "):\n";
+            for (int i = 0; i < qMin(30, interestingSymbols.size()); ++i) {
+                info += "  - " + interestingSymbols[i] + "\n";
+            }
+        }
+    }
+#endif
+    
+    return info;
+}
+
+void NativeStudio::askAI(const QString &prompt, std::function<void(const QString&)> callback)
+{
+    QSettings settings;
+    QString key = settings.value("ai_api_key").toString();
+    QString model = settings.value("ai_model", "gemini-2.0-flash-exp").toString();
+    
+    if (key.isEmpty()) {
+        logMessage("Error: API Key not set in Settings.");
+        return;
+    }
+    
+    QJsonObject root;
+    QJsonArray contents;
+    QJsonObject content;
+    QJsonArray parts;
+    QJsonObject part;
+    part["text"] = prompt;
+    parts.append(part);
+    content["parts"] = parts;
+    contents.append(content);
+    root["contents"] = contents;
+
+    QNetworkRequest req;
+    req.setUrl(QUrl(QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2").arg(model, key)));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    QNetworkReply *reply = m_NetworkManager->post(req, QJsonDocument(root).toJson());
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            QString text = doc.object()["candidates"].toArray()[0].toObject()["content"].toObject()["parts"].toArray()[0].toObject()["text"].toString();
+            callback(text);
+        } else {
+            logMessage("AI request failed: " + reply->errorString());
+        }
+        reply->deleteLater();
+    });
 }
 
 void NativeStudio::logMessage(const QString &msg) {

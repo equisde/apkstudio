@@ -6,6 +6,8 @@
 #include <QPushButton>
 #include <QTextBrowser>
 #include <QGroupBox>
+#include <QNetworkAccessManager>
+#include <functional>
 
 class SecurityHub : public QWidget
 {
@@ -22,8 +24,13 @@ private slots:
 
 private:
     void setupUI();
+    void askAI(const QString &prompt, std::function<void(const QString&)> callback);
+    QString collectSmaliContext(const QString &searchPattern);
+    void logMessage(const QString &msg, const QString &type = "info");
+    
     QString m_ProjectPath;
     QTextBrowser *m_AiSecurityLog;
+    QNetworkAccessManager *m_NetworkManager;
 };
 
 #endif // SECURITYHUB_H

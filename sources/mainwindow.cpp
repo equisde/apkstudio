@@ -389,12 +389,137 @@ void MainWindow::handleActionSaveAll() {
 void MainWindow::handleActionSettings() { (new SettingsDialog())->exec(); }
 void MainWindow::handleActionQuit() { qApp->quit(); }
 void MainWindow::handleToolAIGameMod() { (new AIGameModDialog(m_CurrentProjectPath, this))->show(); }
-void MainWindow::handleSecurityAnalysis() {}
-void MainWindow::handleApkCloning() {}
-void MainWindow::handleAppModification() {}
-void MainWindow::handleAIAnalysisComplete(const QString&) {}
-void MainWindow::handleActionFile() {}
-void MainWindow::handleActionClose() {}
-void MainWindow::handleActionCloseAll() {}
-void MainWindow::handleTabChanged(int) {}
-MainWindow::~MainWindow() {}
+
+void MainWindow::handleSecurityAnalysis()
+{
+    switchSection(Security);
+    if (m_SecurityHub && !m_CurrentProjectPath.isEmpty()) {
+        m_SecurityHub->setProjectPath(m_CurrentProjectPath);
+    }
+}
+
+void MainWindow::handleApkCloning()
+{
+    switchSection(Cloning);
+    if (m_CloningStudio && !m_CurrentProjectPath.isEmpty()) {
+        m_CloningStudio->setProjectPath(m_CurrentProjectPath);
+    }
+}
+
+void MainWindow::handleAppModification()
+{
+    switchSection(AppMod);
+    if (m_AppModStudio && !m_CurrentProjectPath.isEmpty()) {
+        m_AppModStudio->setProjectPath(m_CurrentProjectPath);
+    }
+}
+
+void MainWindow::handleAIAnalysisComplete(const QString &analysisPath)
+{
+    if (analysisPath.isEmpty()) return;
+    
+    // Open the generated analysis report
+    QString reportPath = analysisPath;
+    if (QFileInfo(reportPath).isDir()) {
+        // Look for AI-generated reports
+        QStringList reports = {"AI_GAME_MOD.md", "AI_APP_AUDIT.md", "SECURITY_AUDIT.md"};
+        for (const QString &report : reports) {
+            QString fullPath = reportPath + "/" + report;
+            if (QFile::exists(fullPath)) {
+                openFile(fullPath);
+                break;
+            }
+        }
+    } else if (QFile::exists(reportPath)) {
+        openFile(reportPath);
+    }
+    
+    updateStatusBar(tr("AI Analysis complete. Report generated."));
+}
+
+void MainWindow::handleActionFile()
+{
+    QString path = QFileDialog::getOpenFileName(this, tr("Open File"), m_CurrentProjectPath,
+        "All Files (*);;Smali (*.smali);;Java (*.java);;XML (*.xml);;JSON (*.json)");
+    if (!path.isEmpty()) {
+        openFile(path);
+    }
+}
+
+void MainWindow::handleActionClose()
+{
+    int currentIndex = m_TabEditors->currentIndex();
+    if (currentIndex >= 0) {
+        // Check if file needs saving
+        auto editor = dynamic_cast<AdvancedCodeEditor*>(m_TabEditors->widget(currentIndex));
+        if (editor && editor->document()->isModified()) {
+            int choice = QMessageBox::question(this, tr("Save Changes?"),
+                tr("The file has unsaved changes. Save before closing?"),
+                QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+            
+            if (choice == QMessageBox::Save) {
+                editor->save();
+            } else if (choice == QMessageBox::Cancel) {
+                return;
+            }
+        }
+        handleTabCloseRequested(currentIndex);
+    }
+}
+
+void MainWindow::handleActionCloseAll()
+{
+    // Check for unsaved changes in all tabs
+    bool hasUnsaved = false;
+    for (int i = 0; i < m_TabEditors->count(); ++i) {
+        auto editor = dynamic_cast<AdvancedCodeEditor*>(m_TabEditors->widget(i));
+        if (editor && editor->document()->isModified()) {
+            hasUnsaved = true;
+            break;
+        }
+    }
+    
+    if (hasUnsaved) {
+        int choice = QMessageBox::question(this, tr("Close All?"),
+            tr("Some files have unsaved changes. Save all before closing?"),
+            QMessageBox::SaveAll | QMessageBox::Discard | QMessageBox::Cancel);
+        
+        if (choice == QMessageBox::SaveAll) {
+            handleActionSaveAll();
+        } else if (choice == QMessageBox::Cancel) {
+            return;
+        }
+    }
+    
+    // Close all tabs
+    while (m_TabEditors->count() > 0) {
+        m_TabEditors->removeTab(0);
+    }
+    m_CentralStack->setCurrentIndex(0);
+}
+
+void MainWindow::handleTabChanged(int index)
+{
+    if (index < 0) {
+        m_ActionSave->setEnabled(false);
+        updateStatusBar(tr("No file open"));
+        return;
+    }
+    
+    QString filePath = m_TabEditors->tabToolTip(index);
+    m_ActionSave->setEnabled(true);
+    
+    if (!filePath.isEmpty()) {
+        QFileInfo info(filePath);
+        updateStatusBar(tr("Editing: %1").arg(info.fileName()));
+    }
+}
+
+MainWindow::~MainWindow()
+{
+    // Save current project path for next session
+    QSettings settings;
+    if (!m_CurrentProjectPath.isEmpty()) {
+        settings.setValue("open_project", m_CurrentProjectPath);
+    }
+}

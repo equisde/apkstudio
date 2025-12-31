@@ -6,6 +6,8 @@
 #include <QPushButton>
 #include <QListWidget>
 #include <QTextBrowser>
+#include <QNetworkAccessManager>
+#include <functional>
 #include "aitoolfactory.h"
 
 class DllStudio : public QWidget
@@ -22,10 +24,14 @@ private slots:
 private:
     void setupUI();
     void scanExtractedSource();
+    void askAI(const QString &prompt, std::function<void(const QString&)> callback);
+    QString extractDllInfo(const QString &dllPath);
+    void logMessage(const QString &msg);
     
     QString m_ProjectPath;
     QListWidget *m_DllList;
     QTextBrowser *m_AiInsights;
+    QNetworkAccessManager *m_NetworkManager;
 };
 
 #endif // DLLSTUDIO_H

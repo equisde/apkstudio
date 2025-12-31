@@ -7,6 +7,8 @@
 #include <QListWidget>
 #include <QTextBrowser>
 #include <QGroupBox>
+#include <QNetworkAccessManager>
+#include <functional>
 #include "aitoolfactory.h"
 
 class NativeStudio : public QWidget
@@ -24,9 +26,13 @@ private slots:
 private:
     void setupUI();
     void logMessage(const QString &msg);
+    void askAI(const QString &prompt, std::function<void(const QString&)> callback);
+    QString extractLibraryInfo(const QString &libPath);
+    
     QString m_ProjectPath;
     QListWidget *m_LibsList;
     QTextBrowser *m_AnalysisReport;
+    QNetworkAccessManager *m_NetworkManager;
 };
 
 #endif

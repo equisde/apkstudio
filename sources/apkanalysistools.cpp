@@ -822,7 +822,88 @@ void SmaliPatcherDialog::replaceAll()
 
 void SmaliPatcherDialog::replaceSelected()
 {
-    // TODO: Implement selective replacement
+    QList<QTableWidgetItem*> selectedItems = m_Results->selectedItems();
+    if (selectedItems.isEmpty()) {
+        QMessageBox::warning(this, tr("Replace Selected"), tr("No rows selected."));
+        return;
+    }
+    
+    QString replacement = m_ReplaceInput->text();
+    QString term = m_FindInput->text();
+    if (term.isEmpty()) return;
+    
+    QRegularExpression regex;
+    if (m_Regex->isChecked()) {
+        regex.setPattern(term);
+    } else {
+        regex.setPattern(QRegularExpression::escape(term));
+    }
+    if (!m_CaseSensitive->isChecked()) {
+        regex.setPatternOptions(QRegularExpression::CaseInsensitiveOption);
+    }
+    
+    // Collect unique rows selected
+    QSet<int> selectedRows;
+    for (QTableWidgetItem *item : selectedItems) {
+        selectedRows.insert(item->row());
+    }
+    
+    // Group replacements by file
+    QMap<QString, QList<QPair<int, QString>>> fileReplacements;
+    for (int row : selectedRows) {
+        QString filePath = m_Results->item(row, 0)->data(Qt::UserRole).toString();
+        int lineNum = m_Results->item(row, 1)->text().toInt();
+        QString originalLine = m_Results->item(row, 2)->text();
+        
+        if (!fileReplacements.contains(filePath)) {
+            fileReplacements[filePath] = QList<QPair<int, QString>>();
+        }
+        fileReplacements[filePath].append(qMakePair(lineNum, originalLine));
+    }
+    
+    int totalReplaced = 0;
+    
+    // Process each file
+    for (auto it = fileReplacements.constBegin(); it != fileReplacements.constEnd(); ++it) {
+        QString filePath = it.key();
+        const QList<QPair<int, QString>> &linesToReplace = it.value();
+        
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        
+        QStringList lines;
+        QTextStream in(&file);
+        while (!in.atEnd()) {
+            lines.append(in.readLine());
+        }
+        file.close();
+        
+        // Replace specific lines
+        for (const auto &pair : linesToReplace) {
+            int lineIdx = pair.first - 1; // 0-based index
+            if (lineIdx >= 0 && lineIdx < lines.size()) {
+                QString &line = lines[lineIdx];
+                if (regex.match(line).hasMatch()) {
+                    line.replace(regex, replacement);
+                    totalReplaced++;
+                }
+            }
+        }
+        
+        // Write back to file
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) continue;
+        QTextStream out(&file);
+        for (const QString &line : lines) {
+            out << line << "\n";
+        }
+        file.close();
+    }
+    
+    QMessageBox::information(this, tr("Replace Selected"), 
+        tr("Replaced %1 selected occurrences.").arg(totalReplaced));
+    
+    // Refresh results
+    findOccurrences();
 }
 
 // ==================== Hardcoded Finder ====================
