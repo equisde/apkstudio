@@ -111,6 +111,23 @@ QLayout *AntiSplitDialog::buildForm()
     m_CheckSign->setChecked(true);
     layout->addWidget(m_CheckSign);
     
+    // Architecture selection
+    auto archLayout = new QHBoxLayout();
+    auto archLabel = new QLabel(tr("Target Architecture:"), this);
+    archLayout->addWidget(archLabel);
+    
+    m_ComboArch = new QComboBox(this);
+    m_ComboArch->addItem(tr("All (Universal)"), "all");
+    m_ComboArch->addItem(tr("arm64-v8a (64-bit ARM)"), "arm64-v8a");
+    m_ComboArch->addItem(tr("armeabi-v7a (32-bit ARM)"), "armeabi-v7a");
+    m_ComboArch->addItem(tr("x86_64 (64-bit Intel)"), "x86_64");
+    m_ComboArch->addItem(tr("x86 (32-bit Intel)"), "x86");
+    m_ComboArch->setCurrentIndex(1); // Default to arm64-v8a (most common)
+    m_ComboArch->setToolTip(tr("Select target architecture. Choosing a specific architecture reduces APK size and avoids split APK issues."));
+    archLayout->addWidget(m_ComboArch);
+    archLayout->addStretch();
+    layout->addLayout(archLayout);
+    
     return layout;
 }
 
@@ -223,4 +240,9 @@ QString AntiSplitDialog::outputFile() const
 bool AntiSplitDialog::signApk() const
 {
     return m_CheckSign->isChecked();
+}
+
+QString AntiSplitDialog::targetArchitecture() const
+{
+    return m_ComboArch->currentData().toString();
 }

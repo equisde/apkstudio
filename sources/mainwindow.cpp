@@ -286,7 +286,8 @@ void MainWindow::handleSplitApkOpen(const QString &bundlePath) {
     m_GlobalProgress->setWindowModality(Qt::WindowModal);
     
     auto thread = new QThread();
-    auto worker = new AntiSplitWorker(QStringList() << bundlePath, outputPath, false);
+    // Use arm64-v8a by default for split APKs (most common modern architecture)
+    auto worker = new AntiSplitWorker(QStringList() << bundlePath, outputPath, false, "arm64-v8a");
     worker->moveToThread(thread);
     
     connect(thread, &QThread::started, worker, &AntiSplitWorker::merge);

@@ -2,6 +2,7 @@
 #define ANTISPLITDIALOG_H
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QLineEdit>
@@ -16,11 +17,13 @@ public:
     QStringList inputFiles() const;
     QString outputFile() const;
     bool signApk() const;
+    QString targetArchitecture() const;
 private:
     QDialogButtonBox *m_ButtonBox;
     QListWidget *m_ListFiles;
     QLineEdit *m_EditOutput;
     QCheckBox *m_CheckSign;
+    QComboBox *m_ComboArch;
     QPushButton *m_BtnAddApk;
     QPushButton *m_BtnAddXapk;
     QPushButton *m_BtnRemove;

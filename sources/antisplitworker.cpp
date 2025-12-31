@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QUuid>
@@ -14,8 +15,9 @@
 #include <windows.h>
 #endif
 
-AntiSplitWorker::AntiSplitWorker(const QStringList &inputFiles, const QString &outputFile, const bool signApk, QObject *parent)
-    : QObject(parent), m_InputFiles(inputFiles), m_OutputFile(outputFile), m_SignApk(signApk)
+AntiSplitWorker::AntiSplitWorker(const QStringList &inputFiles, const QString &outputFile, const bool signApk, 
+                                 const QString &targetArch, QObject *parent)
+    : QObject(parent), m_InputFiles(inputFiles), m_OutputFile(outputFile), m_SignApk(signApk), m_TargetArch(targetArch)
 {
 }
 
@@ -419,6 +421,16 @@ bool AntiSplitWorker::mergeApks(const QStringList &apkFiles, const QString &work
         splitProgress += progressPerSplit;
     }
     
+    // Clean AndroidManifest.xml to remove split APK attributes
+    emit mergeProgress(68, tr("Cleaning AndroidManifest.xml..."));
+    cleanManifestSplitAttributes(baseExtractDir);
+    
+    // Filter architectures if specified
+    if (m_TargetArch != "all" && !m_TargetArch.isEmpty()) {
+        emit mergeProgress(69, tr("Filtering to %1 architecture...").arg(m_TargetArch));
+        filterArchitectures(baseExtractDir);
+    }
+    
     // Remove signature files from merged APK (they will be invalid after modification)
     emit mergeProgress(70, tr("Removing old signatures..."));
     QString metaInfDir = baseExtractDir + "/META-INF";
@@ -562,4 +574,89 @@ bool AntiSplitWorker::signOutputApk(const QString &apkPath)
     ProcessResult result = ProcessUtils::runCommand(java, args, 600);
     
     return result.code == 0;
+}
+
+void AntiSplitWorker::cleanManifestSplitAttributes(const QString &extractDir)
+{
+    QString manifestPath = extractDir + "/AndroidManifest.xml";
+    QFile manifestFile(manifestPath);
+    
+    if (!manifestFile.exists()) {
+#ifdef QT_DEBUG
+        qDebug() << "AndroidManifest.xml not found at:" << manifestPath;
+#endif
+        return;
+    }
+    
+    if (!manifestFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return;
+    }
+    
+    QString content = QString::fromUtf8(manifestFile.readAll());
+    manifestFile.close();
+    
+    // Remove split APK related attributes that cause "missing split" errors
+    QRegularExpression splitAttrsRegex(
+        "\\s*android:(requiredSplitTypes|splitTypes|isSplitRequired|extractNativeLibs)=\"[^\"]*\"",
+        QRegularExpression::CaseInsensitiveOption);
+    
+    QString cleanedContent = content;
+    cleanedContent.replace(splitAttrsRegex, "");
+    
+    // Also remove split="" attribute if empty
+    QRegularExpression emptySplitRegex("\\s*android:split=\"\"");
+    cleanedContent.replace(emptySplitRegex, "");
+    
+    // Remove configForSplit attribute
+    QRegularExpression configForSplitRegex("\\s*android:configForSplit=\"[^\"]*\"");
+    cleanedContent.replace(configForSplitRegex, "");
+    
+    // Remove isFeatureSplit attribute
+    QRegularExpression isFeatureSplitRegex("\\s*android:isFeatureSplit=\"[^\"]*\"");
+    cleanedContent.replace(isFeatureSplitRegex, "");
+    
+    if (content != cleanedContent) {
+        if (manifestFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+            manifestFile.write(cleanedContent.toUtf8());
+            manifestFile.close();
+#ifdef QT_DEBUG
+            qDebug() << "Cleaned split APK attributes from AndroidManifest.xml";
+#endif
+        }
+    }
+}
+
+void AntiSplitWorker::filterArchitectures(const QString &extractDir)
+{
+    QString libDir = extractDir + "/lib";
+    QDir libFolder(libDir);
+    
+    if (!libFolder.exists()) {
+#ifdef QT_DEBUG
+        qDebug() << "No lib folder found at:" << libDir;
+#endif
+        return;
+    }
+    
+    // Get all architecture folders
+    QStringList archFolders = libFolder.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    
+#ifdef QT_DEBUG
+    qDebug() << "Found architecture folders:" << archFolders;
+    qDebug() << "Target architecture:" << m_TargetArch;
+#endif
+    
+    // Remove architectures that don't match the target
+    for (const QString &arch : archFolders) {
+        if (arch != m_TargetArch) {
+            QString archPath = libDir + "/" + arch;
+            QDir archDir(archPath);
+            if (archDir.exists()) {
+                archDir.removeRecursively();
+#ifdef QT_DEBUG
+                qDebug() << "Removed architecture folder:" << arch;
+#endif
+            }
+        }
+    }
 }
