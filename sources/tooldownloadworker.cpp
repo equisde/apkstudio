@@ -538,19 +538,44 @@ QString ToolDownloadWorker::findExecutableInSystemLocations()
                   << "C:/Program Files (x86)/Mono";
         
         for (const QString &monoPath : monoPaths) {
+            QDir monoDir(monoPath);
+            if (!monoDir.exists()) continue;
+            
+            // Check for csc.bat (Roslyn compiler, more modern)
+            QString cscBat = monoPath + "/bin/csc.bat";
+            if (QFile::exists(cscBat)) {
+                return cscBat;
+            }
+            
+            // Check for mcs.bat in bin directory
+            QString mcsBat = monoPath + "/bin/mcs.bat";
+            if (QFile::exists(mcsBat)) {
+                return mcsBat;
+            }
+            
             // Check for mcs in bin directory
-            QString mcsExe = monoPath + "/bin/mcs.bat";
+            QString mcsExe = monoPath + "/bin/mcs";
             if (QFile::exists(mcsExe)) {
                 return mcsExe;
             }
-            mcsExe = monoPath + "/bin/mcs";
-            if (QFile::exists(mcsExe)) {
-                return mcsExe;
-            }
-            // Also check lib/mono for mcs.exe
+            
+            // Check lib/mono for mcs.exe
             QString mcsLib = monoPath + "/lib/mono/4.5/mcs.exe";
             if (QFile::exists(mcsLib)) {
                 return mcsLib;
+            }
+            
+            // Check lib/mono for csc.exe
+            QString cscLib = monoPath + "/lib/mono/4.5/csc.exe";
+            if (QFile::exists(cscLib)) {
+                return cscLib;
+            }
+            
+            // Search recursively for any mcs or csc executable
+            QDirIterator it(monoPath, QStringList() << "mcs.bat" << "mcs.exe" << "csc.bat" << "csc.exe", 
+                           QDir::Files, QDirIterator::Subdirectories);
+            if (it.hasNext()) {
+                return it.next();
             }
         }
 #elif defined(Q_OS_MACOS)
@@ -1145,7 +1170,19 @@ bool ToolDownloadWorker::installMsi(const QString &msiPath, const QString &insta
 #endif
             
             for (const QString &monoPath : monoPaths) {
-                // Check for mcs.bat in bin directory (preferred)
+                QDir monoDir(monoPath);
+                if (!monoDir.exists()) continue;
+                
+                // Check for csc.bat in bin directory (Roslyn compiler, preferred)
+                QString cscBat = monoPath + "/bin/csc.bat";
+                if (QFile::exists(cscBat)) {
+#ifdef QT_DEBUG
+                    qDebug() << "[installMsi] Mono csc.bat found at:" << cscBat;
+#endif
+                    return true;
+                }
+                
+                // Check for mcs.bat in bin directory
                 QString mcsBat = monoPath + "/bin/mcs.bat";
                 if (QFile::exists(mcsBat)) {
 #ifdef QT_DEBUG
@@ -1168,6 +1205,25 @@ bool ToolDownloadWorker::installMsi(const QString &msiPath, const QString &insta
                 if (QFile::exists(mcsLib)) {
 #ifdef QT_DEBUG
                     qDebug() << "[installMsi] Mono mcs.exe found at:" << mcsLib;
+#endif
+                    return true;
+                }
+                
+                // Check for csc.exe in lib/mono
+                QString cscLib = monoPath + "/lib/mono/4.5/csc.exe";
+                if (QFile::exists(cscLib)) {
+#ifdef QT_DEBUG
+                    qDebug() << "[installMsi] Mono csc.exe found at:" << cscLib;
+#endif
+                    return true;
+                }
+                
+                // Search recursively
+                QDirIterator it(monoPath, QStringList() << "mcs.bat" << "mcs.exe" << "csc.bat" << "csc.exe", 
+                               QDir::Files, QDirIterator::Subdirectories);
+                if (it.hasNext()) {
+#ifdef QT_DEBUG
+                    qDebug() << "[installMsi] Found Mono compiler at:" << it.next();
 #endif
                     return true;
                 }
