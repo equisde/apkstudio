@@ -13,6 +13,7 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QNetworkAccessManager>
+#include <QProcess>
 #include <QVBoxLayout>
 #include <QCheckBox>
 #include <QSpinBox>
