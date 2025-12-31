@@ -82,38 +82,53 @@ void ModConfigWidget::setupUI()
     auto scrollLayout = new QVBoxLayout(scrollWidget);
     scrollLayout->setSpacing(10);
     
-    // Define mod categories and options
+    // Define mod categories and options with more detailed types
     QList<ModOption> resourceMods = {
-        {"coins", tr("Unlimited Coins"), tr("Set coins to maximum value"), false, 999999999, 0, 999999999, ""},
-        {"gems", tr("Unlimited Gems/Diamonds"), tr("Set gems/diamonds to maximum"), false, 999999999, 0, 999999999, ""},
-        {"energy", tr("Unlimited Energy/Stamina"), tr("Remove energy limits"), false, 9999, 0, 99999, ""},
-        {"keys", tr("Unlimited Keys"), tr("Get unlimited keys for chests/levels"), false, 9999, 0, 99999, ""},
-        {"tickets", tr("Unlimited Tickets"), tr("Remove ticket restrictions"), false, 9999, 0, 99999, ""},
-        {"vip", tr("VIP Status"), tr("Enable VIP/Premium features"), false, 99, 1, 99, ""}
+        {"coins", tr("Unlimited Coins"), tr("Set coins to maximum value"), false, 999999999, 0, 999999999, "", tr("Resources"), "value"},
+        {"gems", tr("Unlimited Gems/Diamonds"), tr("Set gems/diamonds to maximum"), false, 999999999, 0, 999999999, "", tr("Resources"), "value"},
+        {"energy", tr("Unlimited Energy/Stamina"), tr("Remove energy limits"), false, 9999, 0, 99999, "", tr("Resources"), "value"},
+        {"keys", tr("Unlimited Keys"), tr("Get unlimited keys for chests/levels"), false, 9999, 0, 99999, "", tr("Resources"), "value"},
+        {"tickets", tr("Unlimited Tickets"), tr("Remove ticket restrictions"), false, 9999, 0, 99999, "", tr("Resources"), "value"},
+        {"tokens", tr("Unlimited Tokens"), tr("Set tokens to maximum"), false, 999999, 0, 999999, "", tr("Resources"), "value"},
+        {"stars", tr("Unlimited Stars"), tr("Maximize star count"), false, 9999, 0, 99999, "", tr("Resources"), "value"},
+        {"hearts", tr("Unlimited Hearts/Lives"), tr("Never run out of lives"), false, 999, 0, 999, "", tr("Resources"), "value"},
+        {"vip", tr("VIP Status"), tr("Enable VIP/Premium features"), false, 99, 1, 99, "", tr("Resources"), "value"}
     };
     
     QList<ModOption> playerMods = {
-        {"health", tr("God Mode / Unlimited Health"), tr("Player takes no damage"), false, 999999, 0, 999999, ""},
-        {"damage", tr("One-Hit Kill"), tr("Kill enemies with one hit"), false, 999999, 1, 999999, ""},
-        {"speed", tr("Speed Multiplier"), tr("Increase player movement speed"), false, 5, 1, 100, ""},
-        {"defense", tr("Max Defense/Armor"), tr("Maximum protection"), false, 9999, 0, 9999, ""},
-        {"exp", tr("Unlimited XP/Level"), tr("Maximize experience points"), false, 999999, 0, 999999, ""}
+        {"health", tr("God Mode / Unlimited Health"), tr("Player takes no damage"), false, 999999, 0, 999999, "", tr("Player"), "value"},
+        {"damage", tr("One-Hit Kill"), tr("Kill enemies with one hit"), false, 999999, 1, 999999, "", tr("Player"), "multiplier"},
+        {"damage_mult", tr("Damage Multiplier"), tr("Multiply player damage"), false, 10, 2, 1000, "", tr("Player"), "multiplier"},
+        {"speed", tr("Speed Multiplier"), tr("Increase player movement speed"), false, 5, 1, 100, "", tr("Player"), "multiplier"},
+        {"defense", tr("Max Defense/Armor"), tr("Maximum protection"), false, 9999, 0, 9999, "", tr("Player"), "value"},
+        {"exp", tr("Unlimited XP/Level"), tr("Maximize experience points"), false, 999999, 0, 999999, "", tr("Player"), "value"},
+        {"exp_mult", tr("XP Multiplier"), tr("Multiply experience gained"), false, 10, 2, 1000, "", tr("Player"), "multiplier"},
+        {"attack_speed", tr("Attack Speed"), tr("Increase attack speed"), false, 5, 1, 100, "", tr("Player"), "multiplier"},
+        {"critical", tr("100% Critical Hit"), tr("Always deal critical damage"), false, 100, 1, 100, "", tr("Player"), "value"},
+        {"dodge", tr("100% Dodge/Evasion"), tr("Never get hit"), false, 100, 0, 100, "", tr("Player"), "value"}
     };
     
     QList<ModOption> inventoryMods = {
-        {"inventory_max", tr("Max Inventory Stack"), tr("Stack items to maximum"), false, 9999, 1, 9999, ""},
-        {"unlock_items", tr("Unlock All Items"), tr("Access all game items"), false, 1, 0, 1, ""},
-        {"unlock_chars", tr("Unlock All Characters"), tr("Access all playable characters"), false, 1, 0, 1, ""},
-        {"unlock_levels", tr("Unlock All Levels"), tr("Access all game levels"), false, 1, 0, 1, ""},
-        {"unlock_skins", tr("Unlock All Skins"), tr("Access all cosmetic items"), false, 1, 0, 1, ""}
+        {"inventory_max", tr("Max Inventory Stack"), tr("Stack items to maximum"), false, 9999, 1, 9999, "", tr("Inventory"), "value"},
+        {"unlock_items", tr("Unlock All Items"), tr("Access all game items"), false, 1, 0, 1, "", tr("Inventory"), "toggle"},
+        {"unlock_chars", tr("Unlock All Characters"), tr("Access all playable characters"), false, 1, 0, 1, "", tr("Inventory"), "toggle"},
+        {"unlock_levels", tr("Unlock All Levels"), tr("Access all game levels"), false, 1, 0, 1, "", tr("Inventory"), "toggle"},
+        {"unlock_skins", tr("Unlock All Skins"), tr("Access all cosmetic items"), false, 1, 0, 1, "", tr("Inventory"), "toggle"},
+        {"unlock_weapons", tr("Unlock All Weapons"), tr("Access all weapons"), false, 1, 0, 1, "", tr("Inventory"), "toggle"},
+        {"unlock_pets", tr("Unlock All Pets"), tr("Access all companion pets"), false, 1, 0, 1, "", tr("Inventory"), "toggle"},
+        {"max_upgrades", tr("Max Upgrades"), tr("Maximize all item upgrades"), false, 1, 0, 1, "", tr("Inventory"), "toggle"}
     };
     
     QList<ModOption> gameMods = {
-        {"no_ads", tr("Remove Ads"), tr("Disable all advertisements"), false, 1, 0, 1, ""},
-        {"free_iap", tr("Free In-App Purchases"), tr("Bypass payment verification"), false, 1, 0, 1, ""},
-        {"no_cooldown", tr("No Cooldowns"), tr("Remove ability cooldowns"), false, 1, 0, 1, ""},
-        {"freeze_time", tr("Freeze Timer"), tr("Stop countdown timers"), false, 1, 0, 1, ""},
-        {"custom", tr("Custom Modification"), tr("Specify your own modification"), false, 0, 0, 999999999, ""}
+        {"no_ads", tr("Remove Ads"), tr("Disable all advertisements"), false, 1, 0, 1, "", tr("Game"), "toggle"},
+        {"free_iap", tr("Free In-App Purchases"), tr("Bypass payment verification"), false, 1, 0, 1, "", tr("Game"), "toggle"},
+        {"no_cooldown", tr("No Cooldowns"), tr("Remove ability cooldowns"), false, 1, 0, 1, "", tr("Game"), "toggle"},
+        {"freeze_time", tr("Freeze Timer"), tr("Stop countdown timers"), false, 1, 0, 1, "", tr("Game"), "toggle"},
+        {"always_win", tr("Always Win"), tr("Automatic victory"), false, 1, 0, 1, "", tr("Game"), "toggle"},
+        {"score_mult", tr("Score Multiplier"), tr("Multiply points earned"), false, 10, 2, 1000, "", tr("Game"), "multiplier"},
+        {"no_enemies", tr("No Enemies"), tr("Disable enemy spawning"), false, 1, 0, 1, "", tr("Game"), "toggle"},
+        {"instant_kill", tr("Instant Kill Enemies"), tr("One hit defeats any enemy"), false, 1, 0, 1, "", tr("Game"), "toggle"},
+        {"custom", tr("Custom Modification"), tr("Specify your own modification"), false, 0, 0, 999999999, "", tr("Game"), "custom"}
     };
     
     addModCategory(scrollLayout, tr("💰 Resources & Currency"), resourceMods);
@@ -261,6 +276,11 @@ void GameModStudio::setupUI()
     heroLayout->addWidget(m_VerifyBtn);
     heroLayout->addWidget(m_AnalyzeBtn);
     heroLayout->addWidget(m_ModMenuBtn);
+    
+    m_InteractiveBtn = new QPushButton(tr("🎨 Interactive Builder"));
+    m_InteractiveBtn->setStyleSheet("QPushButton { background-color: #8957e5; color: white; padding: 10px; border-radius: 6px; border: none; }");
+    heroLayout->addWidget(m_InteractiveBtn);
+    
     layout->addLayout(heroLayout);
 
     m_Progress = new QProgressBar();
@@ -327,6 +347,7 @@ void GameModStudio::setupUI()
     connect(m_VerifyBtn, &QPushButton::clicked, this, &GameModStudio::verifyDecompilation);
     connect(m_AnalyzeBtn, &QPushButton::clicked, this, &GameModStudio::analyzeWithAI);
     connect(m_ModMenuBtn, &QPushButton::clicked, this, &GameModStudio::generateModMenu);
+    connect(m_InteractiveBtn, &QPushButton::clicked, this, &GameModStudio::openInteractiveModBuilder);
     connect(sendBtn, &QPushButton::clicked, this, &GameModStudio::openAIChat);
     connect(m_AIChatInput, &QLineEdit::returnPressed, this, &GameModStudio::openAIChat);
 }
@@ -384,66 +405,55 @@ void GameModStudio::downloadTools()
 
 void GameModStudio::runDumper()
 {
-    // 1. INTENTAR DESCOMPILACIÓN DE C# (Assembly-CSharp.dll)
+    // 1. Check if this is a Unity game
+    if (m_DetectedEngine != GameEngineDetector::Unity) {
+        logMessage("This is not a Unity game. Use appropriate tools for " + GameEngineDetector::engineName(m_DetectedEngine), "warning");
+        return;
+    }
+    
+    // 2. Try Mono decompilation first (Assembly-CSharp.dll)
     QString managedPath = m_ProjectPath + "/assets/bin/Data/Managed/Assembly-CSharp.dll";
     if (QFile::exists(managedPath)) {
-        logMessage("Assembly-CSharp.dll found. Running ILSpyCmd...", "info");
-        QSettings settings;
-        QString ilspy = settings.value("ilspy_cmd").toString();
+        logMessage("Assembly-CSharp.dll found - Mono backend detected.", "info");
         
-        if (!ilspy.isEmpty() && QFile::exists(ilspy)) {
-            QString outDir = m_ProjectPath + "/csharp_src";
-            QDir().mkpath(outDir);
-            QProcess *p = new QProcess(this);
-            p->start(ilspy, {"-o", outDir, managedPath});
-            connect(p, &QProcess::finished, [=]() {
-                logMessage("C# Source extracted! AI analysis ready.", "success");
-                p->deleteLater();
-            });
+        // Check if already decompiled
+        if (QDir(m_ProjectPath + "/csharp_src").exists() && !QDir(m_ProjectPath + "/csharp_src").isEmpty()) {
+            logMessage("C# source already extracted. Running AI analysis...", "info");
+            analyzeWithAI();
             return;
-        } else {
-            logMessage("ILSpyCmd not found. Run 'Setup Tools' to get it.", "error");
+        }
+        
+        if (runILSpyDecompilation()) {
+            return; // Successfully started decompilation
         }
     }
 
-    // 2. LOGICA DE IL2CPP DUMPER (Ya existente)
-    QSettings settings;
-    QString exe = settings.value("il2cpp_dumper_exe").toString();
-    
-    if (exe.isEmpty() || !QFile::exists(exe)) {
-        logMessage("Dumper not found. Run 'Setup Tools' first.", "error");
-        return;
-    }
-
-    QString lib, meta;
-    QStringList archs = {"arm64-v8a", "armeabi-v7a", "x86"};
+    // 3. Try IL2CPP dumper
+    bool hasIl2cpp = false;
+    QStringList archs = {"arm64-v8a", "armeabi-v7a", "x86", "x86_64"};
     for (const QString &arch : archs) {
         if (QFile::exists(m_ProjectPath + "/lib/" + arch + "/libil2cpp.so")) {
-            lib = m_ProjectPath + "/lib/" + arch + "/libil2cpp.so";
+            hasIl2cpp = true;
             break;
         }
     }
-    meta = m_ProjectPath + "/assets/bin/Data/Managed/Metadata/global-metadata.dat";
-
-    if (lib.isEmpty() || !QFile::exists(meta)) {
-        logMessage("Critical Error: libil2cpp.so or metadata not found.", "error");
-        return;
+    
+    if (hasIl2cpp) {
+        // Check if already dumped
+        if (QFile::exists(m_ProjectPath + "/dump/dump.cs")) {
+            logMessage("IL2CPP dump already exists. Running AI analysis...", "info");
+            analyzeWithAI();
+            return;
+        }
+        
+        if (runIl2CppDumper()) {
+            return; // Successfully started dumping
+        }
     }
-
-    logMessage("Starting Dumper...", "info");
     
-    QString dumpPath = m_ProjectPath + "/dump/";
-    QDir().mkpath(dumpPath);
-
-    QProcess *p = new QProcess(this);
-    p->setWorkingDirectory(QFileInfo(exe).absolutePath());
-    p->start(exe, {lib, meta, dumpPath});
-    
-    connect(p, &QProcess::finished, this, [=]() {
-        logMessage("Dump Successful!", "success");
-        p->deleteLater();
-        analyzeWithAI();
-    });
+    // 4. Neither found or configured
+    logMessage("Could not decompile. Check 'Verify' for details and configure tools in Settings.", "error");
+    verifyDecompilation();
 }
 
 void GameModStudio::analyzeWithAI()
@@ -580,66 +590,242 @@ void GameModStudio::openAIChat()
 
 void GameModStudio::verifyDecompilation()
 {
-    logMessage("Verifying decompilation status...", "info");
+    logMessage("Verifying decompilation status and tools...", "info");
     
+    // Check tools from settings
+    QSettings settings;
+    QString ilspy = settings.value("ilspy_cmd").toString();
+    QString dumper = settings.value("il2cpp_dumper_exe").toString();
+    QString jadx = settings.value("jadx_exe").toString();
+    
+    bool ilspyAvailable = !ilspy.isEmpty() && QFile::exists(ilspy);
+    bool dumperAvailable = !dumper.isEmpty() && QFile::exists(dumper);
+    bool jadxAvailable = !jadx.isEmpty() && QFile::exists(jadx);
+    
+    // Check Unity files
     bool hasMonoSource = QDir(m_ProjectPath + "/csharp_src").exists() && 
                          !QDir(m_ProjectPath + "/csharp_src").isEmpty();
     bool hasIl2cppDump = QFile::exists(m_ProjectPath + "/dump/dump.cs") ||
                          QDir(m_ProjectPath + "/dump").exists();
     bool hasAssemblyCSharp = QFile::exists(m_ProjectPath + "/assets/bin/Data/Managed/Assembly-CSharp.dll");
+    bool hasGlobalMetadata = QFile::exists(m_ProjectPath + "/assets/bin/Data/Managed/Metadata/global-metadata.dat");
     bool hasIl2cpp = false;
+    QString il2cppArch;
     
     QStringList archs = {"arm64-v8a", "armeabi-v7a", "x86", "x86_64"};
     for (const QString &arch : archs) {
         if (QFile::exists(m_ProjectPath + "/lib/" + arch + "/libil2cpp.so")) {
             hasIl2cpp = true;
+            il2cppArch = arch;
             break;
         }
     }
     
-    QString report = "<h2>🔍 Decompilation Verification Report</h2>";
-    report += "<table style='width: 100%; border-collapse: collapse;'>";
+    QString report = "<h2>🔍 Unity Decompilation Verification</h2>";
+    report += "<style>table { width: 100%; border-collapse: collapse; } td { padding: 8px; border-bottom: 1px solid #30363d; }</style>";
+    report += "<table>";
     
     auto addRow = [&report](const QString &item, bool found, const QString &status) {
         QString color = found ? "#7ee787" : "#f85149";
         QString icon = found ? "✅" : "❌";
-        report += QString("<tr><td style='padding: 8px; border-bottom: 1px solid #30363d;'>%1</td>"
-                         "<td style='padding: 8px; border-bottom: 1px solid #30363d; color: %2;'>%3 %4</td></tr>")
+        report += QString("<tr><td>%1</td><td style='color: %2;'>%3 %4</td></tr>")
                  .arg(item, color, icon, status);
     };
     
+    // Engine and files status
+    report += "<tr><td colspan='2' style='background: #21262d; font-weight: bold;'>📁 Project Files</td></tr>";
+    
     if (m_DetectedEngine == GameEngineDetector::Unity) {
-        addRow("Unity Engine Detected", true, "Unity game confirmed");
-        addRow("Assembly-CSharp.dll (Mono)", hasAssemblyCSharp, hasAssemblyCSharp ? "Found - can decompile C#" : "Not found");
-        addRow("libil2cpp.so (IL2CPP)", hasIl2cpp, hasIl2cpp ? "Found - needs IL2CPP Dumper" : "Not found");
-        addRow("C# Source Extracted", hasMonoSource, hasMonoSource ? "Ready for AI analysis" : "Run 'Decompile' first");
-        addRow("IL2CPP Dump", hasIl2cppDump, hasIl2cppDump ? "dump.cs available" : "Run 'Decompile' for IL2CPP");
+        addRow("Unity Engine", true, "Unity game confirmed");
+        
+        if (hasAssemblyCSharp) {
+            addRow("Assembly-CSharp.dll (Mono)", true, "Found - Mono backend detected");
+        }
+        if (hasIl2cpp) {
+            addRow("libil2cpp.so", true, QString("Found in %1").arg(il2cppArch));
+            if (hasGlobalMetadata) {
+                addRow("global-metadata.dat", true, "Metadata available for dumping");
+            } else {
+                addRow("global-metadata.dat", false, "Missing - required for IL2CPP dump");
+            }
+        }
+        
+        addRow("C# Source Decompiled", hasMonoSource, hasMonoSource ? "Ready for AI analysis" : "Not yet decompiled");
+        addRow("IL2CPP Dump Available", hasIl2cppDump, hasIl2cppDump ? "dump.cs ready" : "Not yet dumped");
     } else {
         addRow("Engine", true, GameEngineDetector::engineName(m_DetectedEngine));
-        addRow("Decompilation", false, "Not a Unity game - use other tools");
+        addRow("Unity Decompilation", false, "Not a Unity game");
     }
     
+    // Tools status
+    report += "<tr><td colspan='2' style='background: #21262d; font-weight: bold;'>🔧 Configured Tools (from Settings)</td></tr>";
+    addRow("ILSpy/ILSpyCmd", ilspyAvailable, ilspyAvailable ? ilspy : "Not configured - needed for Mono games");
+    addRow("IL2CPP Dumper", dumperAvailable, dumperAvailable ? dumper : "Not configured - needed for IL2CPP games");
+    addRow("JADX", jadxAvailable, jadxAvailable ? jadx : "Not configured - useful for Java code");
+    
     report += "</table>";
     
-    // Check tools availability
-    QSettings settings;
-    QString ilspy = settings.value("ilspy_cmd").toString();
-    QString dumper = settings.value("il2cpp_dumper_exe").toString();
+    // Recommendations
+    report += "<h3>💡 Recommended Actions</h3><ul style='color: #c9d1d9;'>";
     
-    report += "<h3>🔧 Tools Status</h3><table style='width: 100%; border-collapse: collapse;'>";
-    addRow("ILSpy/ILSpyCmd", !ilspy.isEmpty() && QFile::exists(ilspy), ilspy.isEmpty() ? "Not configured" : ilspy);
-    addRow("IL2CPP Dumper", !dumper.isEmpty() && QFile::exists(dumper), dumper.isEmpty() ? "Not configured" : dumper);
-    report += "</table>";
+    bool needsAction = false;
+    
+    if (m_DetectedEngine == GameEngineDetector::Unity) {
+        if (hasAssemblyCSharp && !hasMonoSource) {
+            if (ilspyAvailable) {
+                report += "<li>✨ <b>Ready to decompile:</b> Click 'Decompile' to extract C# source from Assembly-CSharp.dll</li>";
+            } else {
+                report += "<li>⚠️ <b>Install ILSpyCmd:</b> Go to Settings → Binaries → Download Tools to get ILSpyCmd</li>";
+                needsAction = true;
+            }
+        }
+        
+        if (hasIl2cpp && hasGlobalMetadata && !hasIl2cppDump) {
+            if (dumperAvailable) {
+                report += "<li>✨ <b>Ready to dump:</b> Click 'Decompile' to run IL2CPP Dumper and extract method signatures</li>";
+            } else {
+                report += "<li>⚠️ <b>Install IL2CPP Dumper:</b> Go to Settings → Binaries → Download Tools</li>";
+                needsAction = true;
+            }
+        }
+        
+        if (hasMonoSource || hasIl2cppDump) {
+            report += "<li>🎯 <b>Ready for modding:</b> Use 'AI Analyze' to find modifiable game values</li>";
+            report += "<li>🎮 <b>Generate Mod Menu:</b> Select modifications and click 'Generate Mod Menu'</li>";
+        }
+    } else {
+        report += "<li>This is not a Unity game. Use different tools for " + GameEngineDetector::engineName(m_DetectedEngine) + "</li>";
+    }
+    
+    if (needsAction) {
+        report += "<li style='color: #d29922;'>⚡ Click 'Setup Tools' to automatically download missing tools</li>";
+    }
+    
+    report += "</ul>";
     
     m_AIResponseView->setHtml(report);
     
+    // Log summary
     if (hasMonoSource || hasIl2cppDump) {
-        logMessage("Decompilation verified successfully!", "success");
+        logMessage("✅ Decompilation verified! Source code available for analysis.", "success");
+    } else if (needsAction) {
+        logMessage("⚠️ Missing tools. Configure in Settings or click 'Setup Tools'.", "warning");
     } else if (hasAssemblyCSharp || hasIl2cpp) {
-        logMessage("Unity files found but not yet decompiled. Click 'Decompile' to extract source.", "warning");
+        logMessage("Unity files found. Click 'Decompile' to extract source code.", "info");
     } else {
         logMessage("No Unity files found in this project.", "error");
     }
+}
+
+void GameModStudio::openInteractiveModBuilder()
+{
+    auto dialog = new InteractiveModMenuDialog(m_ProjectPath, this);
+    dialog->exec();
+    dialog->deleteLater();
+}
+
+void GameModStudio::checkToolsAndSuggestDownload()
+{
+    QSettings settings;
+    QStringList missing;
+    
+    if (settings.value("ilspy_cmd").toString().isEmpty()) missing << "ILSpyCmd";
+    if (settings.value("il2cpp_dumper_exe").toString().isEmpty()) missing << "IL2CPP Dumper";
+    if (settings.value("jadx_exe").toString().isEmpty()) missing << "JADX";
+    
+    if (!missing.isEmpty()) {
+        logMessage("Missing tools: " + missing.join(", ") + ". Click 'Setup Tools' to download.", "warning");
+    }
+}
+
+bool GameModStudio::runILSpyDecompilation()
+{
+    QSettings settings;
+    QString ilspy = settings.value("ilspy_cmd").toString();
+    
+    if (ilspy.isEmpty() || !QFile::exists(ilspy)) {
+        logMessage("ILSpyCmd not configured. Go to Settings → Binaries.", "error");
+        return false;
+    }
+    
+    QString managedPath = m_ProjectPath + "/assets/bin/Data/Managed/Assembly-CSharp.dll";
+    if (!QFile::exists(managedPath)) {
+        logMessage("Assembly-CSharp.dll not found.", "error");
+        return false;
+    }
+    
+    QString outDir = m_ProjectPath + "/csharp_src";
+    QDir().mkpath(outDir);
+    
+    logMessage("Running ILSpyCmd on Assembly-CSharp.dll...", "info");
+    m_Progress->setVisible(true);
+    m_Progress->setRange(0, 0);
+    
+    QProcess *process = new QProcess(this);
+    process->start(ilspy, {"-o", outDir, managedPath});
+    
+    connect(process, &QProcess::finished, this, [=](int exitCode) {
+        m_Progress->setVisible(false);
+        if (exitCode == 0) {
+            logMessage("✅ C# Source extracted successfully!", "success");
+        } else {
+            logMessage("ILSpyCmd failed with exit code: " + QString::number(exitCode), "error");
+        }
+        process->deleteLater();
+    });
+    
+    return true;
+}
+
+bool GameModStudio::runIl2CppDumper()
+{
+    QSettings settings;
+    QString dumper = settings.value("il2cpp_dumper_exe").toString();
+    
+    if (dumper.isEmpty() || !QFile::exists(dumper)) {
+        logMessage("IL2CPP Dumper not configured. Go to Settings → Binaries.", "error");
+        return false;
+    }
+    
+    QString lib;
+    QStringList archs = {"arm64-v8a", "armeabi-v7a", "x86", "x86_64"};
+    for (const QString &arch : archs) {
+        QString path = m_ProjectPath + "/lib/" + arch + "/libil2cpp.so";
+        if (QFile::exists(path)) {
+            lib = path;
+            break;
+        }
+    }
+    
+    QString meta = m_ProjectPath + "/assets/bin/Data/Managed/Metadata/global-metadata.dat";
+    
+    if (lib.isEmpty() || !QFile::exists(meta)) {
+        logMessage("libil2cpp.so or global-metadata.dat not found.", "error");
+        return false;
+    }
+    
+    QString dumpPath = m_ProjectPath + "/dump/";
+    QDir().mkpath(dumpPath);
+    
+    logMessage("Running IL2CPP Dumper...", "info");
+    m_Progress->setVisible(true);
+    m_Progress->setRange(0, 0);
+    
+    QProcess *process = new QProcess(this);
+    process->setWorkingDirectory(QFileInfo(dumper).absolutePath());
+    process->start(dumper, {lib, meta, dumpPath});
+    
+    connect(process, &QProcess::finished, this, [=](int exitCode) {
+        m_Progress->setVisible(false);
+        if (exitCode == 0 || QFile::exists(dumpPath + "dump.cs")) {
+            logMessage("✅ IL2CPP dump completed!", "success");
+        } else {
+            logMessage("IL2CPP Dumper failed with exit code: " + QString::number(exitCode), "error");
+        }
+        process->deleteLater();
+    });
+    
+    return true;
 }
 
 bool GameModStudio::checkUnityDecompilation()
@@ -974,6 +1160,476 @@ void ModMenuGeneratorDialog::askAI(const QString &prompt, std::function<void(con
 // ==================== Utility Classes ====================
 QString GameModToolDownloader::getToolsDirectory() { return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/tools"; }
 QString GameModToolDownloader::getToolExecutable(const QString &toolName) { return getToolsDirectory() + "/" + toolName; }
+
+// ==================== InteractiveModMenuDialog Implementation ====================
+
+InteractiveModMenuDialog::InteractiveModMenuDialog(const QString &projectPath, QWidget *parent)
+    : QDialog(parent), m_ProjectPath(projectPath)
+{
+    setWindowTitle(tr("🎨 Interactive Mod Menu Builder"));
+    setMinimumSize(1200, 800);
+    
+    m_NetworkManager = new QNetworkAccessManager(this);
+    setupUI();
+    
+    // Collect game context
+    QString srcDir = m_ProjectPath + "/csharp_src";
+    QString dumpFile = m_ProjectPath + "/dump/dump.cs";
+    
+    if (QDir(srcDir).exists()) {
+        QDirIterator it(srcDir, {"*.cs"}, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext() && m_GameContext.length() < 20000) {
+            QFile file(it.next());
+            if (file.open(QIODevice::ReadOnly)) {
+                m_GameContext += QString::fromUtf8(file.readAll());
+                file.close();
+            }
+        }
+    } else if (QFile::exists(dumpFile)) {
+        QFile file(dumpFile);
+        if (file.open(QIODevice::ReadOnly)) {
+            m_GameContext = QString::fromUtf8(file.readAll()).left(20000);
+            file.close();
+        }
+    }
+}
+
+void InteractiveModMenuDialog::setupUI()
+{
+    auto mainLayout = new QVBoxLayout(this);
+    
+    // Header
+    auto header = new QLabel(tr("<h2>🎮 Interactive Mod Menu Builder</h2>"
+                                "<p>Build your custom mod menu step by step with AI assistance.</p>"));
+    header->setStyleSheet("color: #c9d1d9;");
+    mainLayout->addWidget(header);
+    
+    // Main content splitter
+    auto mainSplitter = new QSplitter(Qt::Horizontal);
+    
+    // Left panel: Mod selection
+    auto leftWidget = new QWidget();
+    auto leftLayout = new QVBoxLayout(leftWidget);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    
+    // Category selector
+    auto catLayout = new QHBoxLayout();
+    catLayout->addWidget(new QLabel(tr("Category:")));
+    m_CategoryCombo = new QComboBox();
+    m_CategoryCombo->addItems({tr("All Mods"), tr("💰 Resources"), tr("🎮 Player"), tr("📦 Inventory"), tr("⚙️ Game Mechanics"), tr("🛡️ Anti-Cheat Bypass")});
+    m_CategoryCombo->setStyleSheet("background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 5px;");
+    catLayout->addWidget(m_CategoryCombo);
+    leftLayout->addLayout(catLayout);
+    
+    // Available mods list
+    leftLayout->addWidget(new QLabel(tr("<b>Available Modifications:</b>")));
+    m_AvailableModsList = new QListWidget();
+    m_AvailableModsList->setStyleSheet("background: #161b22; color: #c9d1d9; border: 1px solid #30363d;");
+    m_AvailableModsList->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    leftLayout->addWidget(m_AvailableModsList);
+    
+    // Add/remove buttons
+    auto modBtnLayout = new QHBoxLayout();
+    auto addBtn = new QPushButton(tr("➕ Add Selected"));
+    addBtn->setStyleSheet("background: #238636; color: white; padding: 8px;");
+    auto removeBtn = new QPushButton(tr("➖ Remove"));
+    removeBtn->setStyleSheet("background: #da3633; color: white; padding: 8px;");
+    modBtnLayout->addWidget(addBtn);
+    modBtnLayout->addWidget(removeBtn);
+    leftLayout->addLayout(modBtnLayout);
+    
+    // Custom mod input
+    leftLayout->addWidget(new QLabel(tr("<b>Custom Mod:</b>")));
+    m_CustomModInput = new QLineEdit();
+    m_CustomModInput->setPlaceholderText(tr("Describe a custom modification (e.g., 'Infinite ammo for all weapons')"));
+    m_CustomModInput->setStyleSheet("background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 8px;");
+    leftLayout->addWidget(m_CustomModInput);
+    
+    auto addCustomBtn = new QPushButton(tr("➕ Add Custom Mod"));
+    addCustomBtn->setStyleSheet("background: #1f6feb; color: white; padding: 8px;");
+    leftLayout->addWidget(addCustomBtn);
+    
+    mainSplitter->addWidget(leftWidget);
+    
+    // Center panel: Selected mods and configuration
+    auto centerWidget = new QWidget();
+    auto centerLayout = new QVBoxLayout(centerWidget);
+    centerLayout->setContentsMargins(0, 0, 0, 0);
+    
+    centerLayout->addWidget(new QLabel(tr("<b>Selected Modifications:</b>")));
+    m_SelectedModsList = new QListWidget();
+    m_SelectedModsList->setStyleSheet("background: #161b22; color: #7ee787; border: 1px solid #238636;");
+    centerLayout->addWidget(m_SelectedModsList);
+    
+    // Menu style selector
+    auto styleLayout = new QHBoxLayout();
+    styleLayout->addWidget(new QLabel(tr("Menu Style:")));
+    m_MenuStyleCombo = new QComboBox();
+    m_MenuStyleCombo->addItems({
+        tr("ImGui Floating Menu (C++)"),
+        tr("Native Android Overlay (Java)"),
+        tr("Unity IMGUI Injection"),
+        tr("Frida JavaScript Hooks"),
+        tr("Xposed Module"),
+        tr("LSPosed/EdXposed Module"),
+        tr("Substrate/Cydia Hook")
+    });
+    m_MenuStyleCombo->setStyleSheet("background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 5px;");
+    styleLayout->addWidget(m_MenuStyleCombo, 1);
+    centerLayout->addLayout(styleLayout);
+    
+    // Generation buttons
+    auto genBtnLayout = new QHBoxLayout();
+    auto generateBtn = new QPushButton(tr("🤖 Generate with AI"));
+    generateBtn->setStyleSheet("background: #238636; color: white; padding: 12px; font-weight: bold;");
+    auto previewBtn = new QPushButton(tr("👁️ Preview"));
+    previewBtn->setStyleSheet("background: #1f6feb; color: white; padding: 12px;");
+    genBtnLayout->addWidget(generateBtn);
+    genBtnLayout->addWidget(previewBtn);
+    centerLayout->addLayout(genBtnLayout);
+    
+    mainSplitter->addWidget(centerWidget);
+    
+    // Right panel: AI Chat and Preview
+    auto rightSplitter = new QSplitter(Qt::Vertical);
+    
+    // AI Chat area
+    auto chatWidget = new QWidget();
+    auto chatLayout = new QVBoxLayout(chatWidget);
+    chatLayout->setContentsMargins(0, 0, 0, 0);
+    
+    chatLayout->addWidget(new QLabel(tr("<b>💬 AI Assistant:</b>")));
+    m_ChatArea = new QTextBrowser();
+    m_ChatArea->setStyleSheet("background: #0d1117; color: #c9d1d9; font-family: 'Consolas', monospace;");
+    m_ChatArea->setOpenExternalLinks(true);
+    m_ChatArea->setHtml(tr("<p style='color: #8b949e;'>Ask me anything about game modding! For example:</p>"
+                          "<ul style='color: #58a6ff;'>"
+                          "<li>How do I modify player health in this game?</li>"
+                          "<li>What's the best approach for unlimited coins?</li>"
+                          "<li>How to bypass anti-cheat detection?</li>"
+                          "<li>Can you analyze this game's purchase system?</li>"
+                          "</ul>"));
+    chatLayout->addWidget(m_ChatArea);
+    
+    auto chatInputLayout = new QHBoxLayout();
+    m_AIChatInput = new QLineEdit();
+    m_AIChatInput->setPlaceholderText(tr("Ask AI about game modding..."));
+    m_AIChatInput->setStyleSheet("background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 10px;");
+    auto sendChatBtn = new QPushButton(tr("Send"));
+    sendChatBtn->setStyleSheet("background: #238636; color: white; padding: 10px 20px;");
+    chatInputLayout->addWidget(m_AIChatInput, 1);
+    chatInputLayout->addWidget(sendChatBtn);
+    chatLayout->addLayout(chatInputLayout);
+    
+    rightSplitter->addWidget(chatWidget);
+    
+    // Code preview area
+    auto previewWidget = new QWidget();
+    auto previewLayout = new QVBoxLayout(previewWidget);
+    previewLayout->setContentsMargins(0, 0, 0, 0);
+    
+    previewLayout->addWidget(new QLabel(tr("<b>📝 Generated Code:</b>")));
+    m_PreviewArea = new QTextBrowser();
+    m_PreviewArea->setStyleSheet("background: #0d1117; color: #7ee787; font-family: 'Consolas', monospace;");
+    previewLayout->addWidget(m_PreviewArea);
+    
+    rightSplitter->addWidget(previewWidget);
+    rightSplitter->setSizes({300, 400});
+    
+    mainSplitter->addWidget(rightSplitter);
+    mainSplitter->setSizes({300, 300, 500});
+    
+    mainLayout->addWidget(mainSplitter);
+    
+    // Bottom buttons
+    auto bottomLayout = new QHBoxLayout();
+    auto saveBtn = new QPushButton(tr("💾 Save Code"));
+    saveBtn->setStyleSheet("background: #1f6feb; color: white; padding: 12px 24px;");
+    auto closeBtn = new QPushButton(tr("Close"));
+    closeBtn->setStyleSheet("background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 12px 24px;");
+    bottomLayout->addStretch();
+    bottomLayout->addWidget(saveBtn);
+    bottomLayout->addWidget(closeBtn);
+    mainLayout->addLayout(bottomLayout);
+    
+    // Populate mods list
+    populateModsList();
+    
+    // Connections
+    connect(m_CategoryCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &InteractiveModMenuDialog::onCategorySelected);
+    connect(addBtn, &QPushButton::clicked, this, [this]() {
+        for (auto item : m_AvailableModsList->selectedItems()) {
+            m_SelectedModsList->addItem(item->text());
+            ModOption mod;
+            mod.name = item->text();
+            mod.id = item->data(Qt::UserRole).toString();
+            mod.enabled = true;
+            m_SelectedMods.append(mod);
+        }
+    });
+    connect(removeBtn, &QPushButton::clicked, this, &InteractiveModMenuDialog::removeSelectedMod);
+    connect(addCustomBtn, &QPushButton::clicked, this, &InteractiveModMenuDialog::addCustomMod);
+    connect(generateBtn, &QPushButton::clicked, this, &InteractiveModMenuDialog::generateWithAI);
+    connect(previewBtn, &QPushButton::clicked, this, &InteractiveModMenuDialog::previewCode);
+    connect(sendChatBtn, &QPushButton::clicked, this, [this]() {
+        QString question = m_AIChatInput->text().trimmed();
+        if (question.isEmpty()) return;
+        
+        m_AIChatInput->clear();
+        m_ChatArea->append("<div style='color: #58a6ff; margin: 10px 0;'><b>You:</b> " + question + "</div>");
+        
+        QString prompt = QString(
+            "You are an expert game reverse engineer. Answer this question:\n\n%1\n\n"
+            "Game code context:\n%2\n\n"
+            "Provide practical advice with code examples."
+        ).arg(question, m_GameContext.left(15000));
+        
+        askAI(prompt, [this](const QString &response) {
+            m_ChatArea->append("<div style='color: #7ee787; margin: 10px 0;'><b>AI:</b><br>" + response + "</div>");
+        });
+    });
+    connect(m_AIChatInput, &QLineEdit::returnPressed, sendChatBtn, &QPushButton::click);
+    connect(saveBtn, &QPushButton::clicked, this, &InteractiveModMenuDialog::saveAndApply);
+    connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
+}
+
+void InteractiveModMenuDialog::populateModsList()
+{
+    m_AvailableModsList->clear();
+    QString category = m_CategoryCombo->currentText();
+    
+    QList<QPair<QString, QString>> mods;
+    
+    if (category.contains("All") || category.contains("Resources")) {
+        mods << qMakePair(tr("💰 Unlimited Coins"), "coins")
+             << qMakePair(tr("💎 Unlimited Gems/Diamonds"), "gems")
+             << qMakePair(tr("⚡ Unlimited Energy"), "energy")
+             << qMakePair(tr("🔑 Unlimited Keys"), "keys")
+             << qMakePair(tr("🎟️ Unlimited Tickets"), "tickets")
+             << qMakePair(tr("⭐ Unlimited Stars"), "stars")
+             << qMakePair(tr("❤️ Unlimited Hearts/Lives"), "hearts")
+             << qMakePair(tr("👑 VIP/Premium Status"), "vip");
+    }
+    
+    if (category.contains("All") || category.contains("Player")) {
+        mods << qMakePair(tr("🛡️ God Mode (Invincible)"), "godmode")
+             << qMakePair(tr("⚔️ One-Hit Kill"), "onehit")
+             << qMakePair(tr("💪 Damage Multiplier"), "damage_mult")
+             << qMakePair(tr("🏃 Speed Hack"), "speed")
+             << qMakePair(tr("🎯 100% Critical Hit"), "critical")
+             << qMakePair(tr("👻 100% Dodge/Evasion"), "dodge")
+             << qMakePair(tr("📈 XP Multiplier"), "exp_mult")
+             << qMakePair(tr("🔄 No Cooldowns"), "no_cooldown");
+    }
+    
+    if (category.contains("All") || category.contains("Inventory")) {
+        mods << qMakePair(tr("📦 Unlock All Items"), "unlock_items")
+             << qMakePair(tr("🧑 Unlock All Characters"), "unlock_chars")
+             << qMakePair(tr("🗺️ Unlock All Levels"), "unlock_levels")
+             << qMakePair(tr("🎨 Unlock All Skins"), "unlock_skins")
+             << qMakePair(tr("🔫 Unlock All Weapons"), "unlock_weapons")
+             << qMakePair(tr("🐾 Unlock All Pets"), "unlock_pets")
+             << qMakePair(tr("⬆️ Max Upgrades"), "max_upgrades");
+    }
+    
+    if (category.contains("All") || category.contains("Game")) {
+        mods << qMakePair(tr("🚫 Remove Ads"), "no_ads")
+             << qMakePair(tr("🆓 Free In-App Purchases"), "free_iap")
+             << qMakePair(tr("⏱️ Freeze Timer"), "freeze_time")
+             << qMakePair(tr("🏆 Always Win"), "always_win")
+             << qMakePair(tr("🔢 Score Multiplier"), "score_mult")
+             << qMakePair(tr("👾 No Enemies"), "no_enemies");
+    }
+    
+    if (category.contains("All") || category.contains("Anti-Cheat")) {
+        mods << qMakePair(tr("🔓 SSL Pinning Bypass"), "ssl_bypass")
+             << qMakePair(tr("🕵️ Root/Jailbreak Detection Bypass"), "root_bypass")
+             << qMakePair(tr("📱 Emulator Detection Bypass"), "emulator_bypass")
+             << qMakePair(tr("🔍 Integrity Check Bypass"), "integrity_bypass")
+             << qMakePair(tr("🔐 License Verification Bypass"), "license_bypass");
+    }
+    
+    for (const auto &mod : mods) {
+        auto item = new QListWidgetItem(mod.first);
+        item->setData(Qt::UserRole, mod.second);
+        m_AvailableModsList->addItem(item);
+    }
+}
+
+void InteractiveModMenuDialog::onCategorySelected(int)
+{
+    populateModsList();
+}
+
+void InteractiveModMenuDialog::addCustomMod()
+{
+    QString customText = m_CustomModInput->text().trimmed();
+    if (customText.isEmpty()) return;
+    
+    m_SelectedModsList->addItem("✨ " + customText);
+    
+    ModOption mod;
+    mod.name = customText;
+    mod.id = "custom_" + QString::number(m_SelectedMods.size());
+    mod.customValue = customText;
+    mod.enabled = true;
+    mod.modType = "custom";
+    m_SelectedMods.append(mod);
+    
+    m_CustomModInput->clear();
+}
+
+void InteractiveModMenuDialog::removeSelectedMod()
+{
+    auto items = m_SelectedModsList->selectedItems();
+    for (auto item : items) {
+        int row = m_SelectedModsList->row(item);
+        if (row >= 0 && row < m_SelectedMods.size()) {
+            m_SelectedMods.removeAt(row);
+        }
+        delete item;
+    }
+}
+
+void InteractiveModMenuDialog::generateWithAI()
+{
+    if (m_SelectedModsList->count() == 0) {
+        QMessageBox::warning(this, tr("No Mods"), tr("Please select at least one modification."));
+        return;
+    }
+    
+    m_PreviewArea->setPlainText(tr("🤖 Generating mod menu with AI..."));
+    
+    QString prompt = buildModPrompt();
+    
+    askAI(prompt, [this](const QString &code) {
+        m_GeneratedCode = code;
+        m_PreviewArea->setPlainText(code);
+        m_ChatArea->append("<div style='color: #7ee787;'>✅ Mod menu code generated successfully!</div>");
+    });
+}
+
+QString InteractiveModMenuDialog::buildModPrompt()
+{
+    QString style = m_MenuStyleCombo->currentText();
+    QString modsDescription;
+    
+    for (int i = 0; i < m_SelectedModsList->count(); i++) {
+        modsDescription += QString("- %1\n").arg(m_SelectedModsList->item(i)->text());
+    }
+    
+    return QString(
+        "Generate a complete, production-ready mod menu for a Unity/Android game.\n\n"
+        "**Menu Style:** %1\n\n"
+        "**Modifications to include:**\n%2\n\n"
+        "**Game Code Context (for reference):**\n%3\n\n"
+        "Requirements:\n"
+        "1. Create a professional floating/overlay menu with toggle switches\n"
+        "2. Include proper initialization, hooks, and cleanup code\n"
+        "3. Add value sliders/inputs where applicable (e.g., multipliers)\n"
+        "4. Include hotkey to toggle menu (F1 on PC, Volume buttons on Android)\n"
+        "5. Make it visually appealing with proper styling\n"
+        "6. Add detailed comments explaining each hook/modification\n"
+        "7. If IL2CPP: Include memory patterns and offset finding code\n"
+        "8. If Frida/Xposed: Include complete module structure\n"
+        "9. Add anti-detection techniques if applicable\n\n"
+        "Return ONLY the complete, ready-to-compile source code."
+    ).arg(style, modsDescription, m_GameContext.left(10000));
+}
+
+void InteractiveModMenuDialog::previewCode()
+{
+    if (m_GeneratedCode.isEmpty()) {
+        QMessageBox::information(this, tr("No Code"), tr("Generate the mod menu first."));
+        return;
+    }
+    
+    // Show in a larger dialog
+    QDialog previewDialog(this);
+    previewDialog.setWindowTitle(tr("Code Preview"));
+    previewDialog.resize(900, 700);
+    
+    auto layout = new QVBoxLayout(&previewDialog);
+    auto textEdit = new QPlainTextEdit();
+    textEdit->setPlainText(m_GeneratedCode);
+    textEdit->setStyleSheet("background: #0d1117; color: #7ee787; font-family: 'Consolas', monospace;");
+    textEdit->setReadOnly(true);
+    layout->addWidget(textEdit);
+    
+    auto closeBtn = new QPushButton(tr("Close"));
+    connect(closeBtn, &QPushButton::clicked, &previewDialog, &QDialog::accept);
+    layout->addWidget(closeBtn);
+    
+    previewDialog.exec();
+}
+
+void InteractiveModMenuDialog::saveAndApply()
+{
+    if (m_GeneratedCode.isEmpty()) {
+        QMessageBox::warning(this, tr("No Code"), tr("Generate the mod menu first."));
+        return;
+    }
+    
+    QString ext = ".cpp";
+    QString style = m_MenuStyleCombo->currentText();
+    if (style.contains("Frida")) ext = ".js";
+    else if (style.contains("Java") || style.contains("Xposed")) ext = ".java";
+    
+    QString fileName = QFileDialog::getSaveFileName(this, tr("Save Mod Menu Code"), 
+                                                    m_ProjectPath + "/ModMenu" + ext,
+                                                    "Source Files (*.cpp *.h *.js *.java)");
+    if (!fileName.isEmpty()) {
+        QFile file(fileName);
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(m_GeneratedCode.toUtf8());
+            file.close();
+            QMessageBox::information(this, tr("Saved"), 
+                tr("Mod menu saved to: %1\n\nNext steps:\n"
+                   "1. Review the generated code\n"
+                   "2. Compile using appropriate toolchain\n"
+                   "3. Inject/install the mod").arg(fileName));
+        }
+    }
+}
+
+void InteractiveModMenuDialog::askAI(const QString &prompt, std::function<void(const QString&)> callback)
+{
+    QSettings settings;
+    QString key = settings.value("ai_api_key").toString();
+    QString model = settings.value("ai_model", "gemini-2.0-flash-exp").toString();
+    
+    if (key.isEmpty()) {
+        m_ChatArea->append("<span style='color: #f85149;'>Error: API Key not configured in Settings.</span>");
+        return;
+    }
+    
+    QJsonObject root;
+    QJsonArray contents;
+    QJsonObject content;
+    QJsonArray parts;
+    QJsonObject part;
+    part["text"] = prompt;
+    parts.append(part);
+    content["parts"] = parts;
+    contents.append(content);
+    root["contents"] = contents;
+
+    QNetworkRequest req;
+    req.setUrl(QUrl(QString("https://generativelanguage.googleapis.com/v1beta/models/%1:generateContent?key=%2").arg(model, key)));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    QNetworkReply *reply = m_NetworkManager->post(req, QJsonDocument(root).toJson());
+    connect(reply, &QNetworkReply::finished, this, [=]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            QString text = doc.object()["candidates"].toArray()[0].toObject()["content"].toObject()["parts"].toArray()[0].toObject()["text"].toString();
+            callback(text);
+        } else {
+            m_ChatArea->append("<span style='color: #f85149;'>AI Error: " + reply->errorString() + "</span>");
+        }
+        reply->deleteLater();
+    });
+}
 
 // ==================== Legacy Dialog Implementations ====================
 

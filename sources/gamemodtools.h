@@ -38,6 +38,44 @@ struct ModOption {
     int minValue = 0;
     int maxValue = 999999999;
     QString customValue;
+    QString category;
+    QString modType; // "toggle", "value", "multiplier", "custom"
+};
+
+// Interactive Mod Menu Builder Dialog
+class InteractiveModMenuDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    explicit InteractiveModMenuDialog(const QString &projectPath, QWidget *parent = nullptr);
+
+private slots:
+    void onCategorySelected(int index);
+    void addCustomMod();
+    void removeSelectedMod();
+    void generateWithAI();
+    void previewCode();
+    void saveAndApply();
+
+private:
+    void setupUI();
+    void askAI(const QString &prompt, std::function<void(const QString&)> callback);
+    void populateModsList();
+    QString buildModPrompt();
+    
+    QString m_ProjectPath;
+    QString m_GameContext;
+    QComboBox *m_CategoryCombo;
+    QListWidget *m_AvailableModsList;
+    QListWidget *m_SelectedModsList;
+    QComboBox *m_MenuStyleCombo;
+    QTextBrowser *m_PreviewArea;
+    QTextBrowser *m_ChatArea;
+    QLineEdit *m_CustomModInput;
+    QLineEdit *m_AIChatInput;
+    QString m_GeneratedCode;
+    QNetworkAccessManager *m_NetworkManager;
+    QList<ModOption> m_SelectedMods;
 };
 
 // Widget for configuring individual mod options
@@ -77,6 +115,7 @@ private slots:
     void generateModMenu();
     void openAIChat();
     void verifyDecompilation();
+    void openInteractiveModBuilder();
 
 private:
     void setupUI();
@@ -86,6 +125,9 @@ private:
     void askAI(const QString &prompt, std::function<void(const QString&)> callback);
     bool checkUnityDecompilation();
     QString collectGameContext();
+    bool runILSpyDecompilation();
+    bool runIl2CppDumper();
+    void checkToolsAndSuggestDownload();
 
     QString m_ProjectPath;
     GameEngineDetector::Engine m_DetectedEngine;
@@ -104,6 +146,7 @@ private:
     QPushButton *m_ApplyBtn;
     QPushButton *m_ModMenuBtn;
     QPushButton *m_VerifyBtn;
+    QPushButton *m_InteractiveBtn;
 };
 
 // Interactive AI Chat Dialog for custom mod requests
