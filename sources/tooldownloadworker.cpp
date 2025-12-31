@@ -1,5 +1,6 @@
 #include <QDebug>
 #include <QDir>
+#include <QDirIterator>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
@@ -450,10 +451,21 @@ QString ToolDownloadWorker::findExecutableInExtracted(const QString &extractedPa
         executableNames << "uber-apk-signer.jar";
         break;
     case ILSpyCmd:
-        executableNames << "ilspycmd.exe" << "ilspycmd";
+        // ILSpyCmd can be in various subdirectories, search more broadly
+        executableNames << "ilspycmd.exe" << "ILSpyCmd.exe" << "ilspycmd" << "ILSpyCmd";
+        // Also check common subdirectories in ILSpy releases
+        {
+            QDir ilspyDir(extractedPath);
+            QStringList entries = ilspyDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+            for (const QString &entry : entries) {
+                executableNames << entry + "/ilspycmd.exe" << entry + "/ILSpyCmd.exe";
+            }
+        }
         break;
     case Mono:
-        executableNames << "bin/mcs" << "bin/mcs.exe" << "mcs" << "mcs.exe";
+        // Mono installs to Program Files, but also check common paths
+        executableNames << "bin/mcs" << "bin/mcs.exe" << "mcs" << "mcs.exe"
+                        << "lib/mono/4.5/mcs.exe" << "lib/mono/mcs.exe";
         break;
     }
     
@@ -515,8 +527,77 @@ QString ToolDownloadWorker::findExecutableInSystemLocations()
 #endif
         break;
     }
+    case Mono:
+    {
+#ifdef Q_OS_WIN
+        // Windows: Mono installs to Program Files
+        QStringList monoPaths;
+        monoPaths << "C:/Program Files/Mono"
+                  << "C:/Program Files (x86)/Mono";
+        
+        for (const QString &monoPath : monoPaths) {
+            // Check for mcs in bin directory
+            QString mcsExe = monoPath + "/bin/mcs.bat";
+            if (QFile::exists(mcsExe)) {
+                return mcsExe;
+            }
+            mcsExe = monoPath + "/bin/mcs";
+            if (QFile::exists(mcsExe)) {
+                return mcsExe;
+            }
+            // Also check lib/mono for mcs.exe
+            QString mcsLib = monoPath + "/lib/mono/4.5/mcs.exe";
+            if (QFile::exists(mcsLib)) {
+                return mcsLib;
+            }
+        }
+#elif defined(Q_OS_MACOS)
+        // macOS: Check Mono Framework location
+        QString mcsPath = "/Library/Frameworks/Mono.framework/Commands/mcs";
+        if (QFile::exists(mcsPath)) {
+            return mcsPath;
+        }
+#else
+        // Linux: Check common locations
+        if (QFile::exists("/usr/bin/mcs")) {
+            return "/usr/bin/mcs";
+        }
+        if (QFile::exists("/usr/local/bin/mcs")) {
+            return "/usr/local/bin/mcs";
+        }
+#endif
+        return QString();
+    }
+    case ILSpyCmd:
+    {
+#ifdef Q_OS_WIN
+        // Check common installation paths for ILSpyCmd
+        QStringList ilspyPaths;
+        ilspyPaths << QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/tools/ilspycmd"
+                   << "C:/Program Files/ILSpy"
+                   << "C:/Program Files (x86)/ILSpy";
+        
+        for (const QString &basePath : ilspyPaths) {
+            QDir dir(basePath);
+            if (!dir.exists()) continue;
+            
+            // Search recursively for ilspycmd.exe
+            QDirIterator it(basePath, QStringList() << "ilspycmd.exe" << "ILSpyCmd.exe", 
+                           QDir::Files, QDirIterator::Subdirectories);
+            if (it.hasNext()) {
+                return it.next();
+            }
+        }
+#else
+        // Linux/macOS: Check if ilspycmd is in PATH or common locations
+        if (QFile::exists("/usr/local/bin/ilspycmd")) {
+            return "/usr/local/bin/ilspycmd";
+        }
+#endif
+        return QString();
+    }
     default:
-        return QString(); // Only Java uses system locations for now
+        return QString();
     }
     
     for (const QString &basePath : searchPaths) {
@@ -857,10 +938,10 @@ bool ToolDownloadWorker::installMsi(const QString &msiPath, const QString &insta
     // Use QDir::toNativeSeparators to ensure proper path format for Windows
     QString nativeMsiPath = QDir::toNativeSeparators(msiPath);
     
-    // For Java, we need admin privileges. Use PowerShell to elevate msiexec
-    if (m_Tool == Java) {
+    // For Java and Mono, we need admin privileges. Use PowerShell to elevate msiexec
+    if (m_Tool == Java || m_Tool == Mono) {
 #ifdef QT_DEBUG
-        qDebug() << "[installMsi] Java installation requires admin privileges. Requesting elevation...";
+        qDebug() << "[installMsi] Tool installation requires admin privileges. Requesting elevation...";
 #endif
         
         // Use PowerShell to start msiexec with elevation (shows UAC prompt)
@@ -1028,6 +1109,74 @@ bool ToolDownloadWorker::installMsi(const QString &msiPath, const QString &insta
                 qDebug() << "[installMsi] ERROR: Installation package could not be opened (exit code 1619).";
             }
         }
+#endif
+        return false;
+    }
+    
+    // For Mono, verify successful installation by checking exit code and finding mcs
+    if (m_Tool == Mono) {
+        if (exitCode != 0) {
+#ifdef QT_DEBUG
+            qDebug() << "[installMsi] msiexec returned non-zero exit code (" << exitCode << ")";
+            qDebug() << "[installMsi] Waiting 2 seconds and checking for Mono files anyway...";
+#endif
+            QThread::msleep(2000);
+        }
+        
+        // Search for installed Mono
+        QStringList monoPaths = {
+            "C:/Program Files/Mono",
+            "C:/Program Files (x86)/Mono"
+        };
+        
+#ifdef QT_DEBUG
+        qDebug() << "[installMsi] Searching for Mono in paths:" << monoPaths;
+#endif
+        
+        for (int retry = 0; retry < 5; retry++) {
+#ifdef QT_DEBUG
+            qDebug() << "[installMsi] Search attempt" << (retry + 1) << "of 5 for Mono";
+#endif
+            
+            for (const QString &monoPath : monoPaths) {
+                // Check for mcs.bat in bin directory (preferred)
+                QString mcsBat = monoPath + "/bin/mcs.bat";
+                if (QFile::exists(mcsBat)) {
+#ifdef QT_DEBUG
+                    qDebug() << "[installMsi] Mono mcs.bat found at:" << mcsBat;
+#endif
+                    return true;
+                }
+                
+                // Check for mcs in bin directory
+                QString mcsExe = monoPath + "/bin/mcs";
+                if (QFile::exists(mcsExe)) {
+#ifdef QT_DEBUG
+                    qDebug() << "[installMsi] Mono mcs found at:" << mcsExe;
+#endif
+                    return true;
+                }
+                
+                // Check for mcs.exe in lib/mono
+                QString mcsLib = monoPath + "/lib/mono/4.5/mcs.exe";
+                if (QFile::exists(mcsLib)) {
+#ifdef QT_DEBUG
+                    qDebug() << "[installMsi] Mono mcs.exe found at:" << mcsLib;
+#endif
+                    return true;
+                }
+            }
+            
+            if (retry < 4) {
+#ifdef QT_DEBUG
+                qDebug() << "[installMsi] Mono not found, waiting 1 second before retry...";
+#endif
+                QThread::msleep(1000);
+            }
+        }
+        
+#ifdef QT_DEBUG
+        qDebug() << "[installMsi] Mono installation failed - mcs not found after all retries";
 #endif
         return false;
     }
