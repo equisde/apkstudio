@@ -40,13 +40,56 @@
 GameEngineDetector::Engine GameEngineDetector::detectEngine(const QString &projectPath)
 {
     QDir dir(projectPath);
-    // Exhaustive search including architecture folders
-    QStringList paths = {"lib/arm64-v8a", "lib/armeabi-v7a", "lib/x86", "assets/bin/Data"};
-    for (const QString &p : paths) {
-        if (dir.exists(p + "/libunity.so") || dir.exists(p + "/libil2cpp.so")) return Unity;
-        if (dir.exists(p + "/libflutter.so")) return Flutter;
-        if (dir.exists(p + "/libUE4.so") || dir.exists("assets/UE4Game")) return UnrealEngine;
+    // Exhaustive search including all architecture folders
+    QStringList archs = {"lib/arm64-v8a", "lib/armeabi-v7a", "lib/x86", "lib/x86_64"};
+    
+    for (const QString &arch : archs) {
+        // Unity detection (IL2CPP or Mono)
+        if (dir.exists(arch + "/libunity.so") || dir.exists(arch + "/libil2cpp.so") ||
+            dir.exists(arch + "/libmono.so") || dir.exists(arch + "/libmonobdwgc-2.0.so")) {
+            return Unity;
+        }
+        // Flutter detection
+        if (dir.exists(arch + "/libflutter.so") || dir.exists(arch + "/libapp.so")) {
+            return Flutter;
+        }
+        // Unreal Engine detection
+        if (dir.exists(arch + "/libUE4.so") || dir.exists(arch + "/libUnreal.so")) {
+            return UnrealEngine;
+        }
+        // Godot detection
+        if (dir.exists(arch + "/libgodot_android.so") || dir.exists(arch + "/libgodot.so")) {
+            return Godot;
+        }
+        // Cocos2d-x detection
+        if (dir.exists(arch + "/libcocos2dcpp.so") || dir.exists(arch + "/libcocos2djs.so") ||
+            dir.exists(arch + "/libcocos2dlua.so") || dir.exists(arch + "/libgame.so")) {
+            return Cocos2dx;
+        }
+        // React Native detection
+        if (dir.exists(arch + "/libreactnativejni.so") || dir.exists(arch + "/libjsc.so") ||
+            dir.exists(arch + "/libhermes.so")) {
+            return ReactNative;
+        }
     }
+    
+    // Additional checks for assets
+    if (dir.exists("assets/bin/Data") || dir.exists("assets/bin/Data/Managed")) {
+        return Unity;
+    }
+    if (dir.exists("assets/UE4Game") || dir.exists("assets/Engine")) {
+        return UnrealEngine;
+    }
+    if (dir.exists("assets/godot.pck") || dir.exists("assets/pack.pck")) {
+        return Godot;
+    }
+    if (dir.exists("assets/src") || dir.exists("assets/res") && dir.exists("assets/script")) {
+        return Cocos2dx;
+    }
+    if (dir.exists("assets/index.android.bundle") || dir.exists("assets/index.bundle")) {
+        return ReactNative;
+    }
+    
     return NativeAndroid;
 }
 
@@ -1645,13 +1688,20 @@ QString GameModStudio::collectGameContext()
     QString context;
     int maxContextSize = 30000;
     
-    // Check for C# source files
+    // Keywords for identifying interesting code
+    QStringList interestingPatterns = {
+        "Player", "Health", "Money", "Coin", "Gem", "Diamond", 
+        "Energy", "Score", "Purchase", "IAP", "Store", "Premium",
+        "VIP", "Inventory", "Item", "Weapon", "Damage", "Speed",
+        "Currency", "Gold", "Level", "XP", "Experience", "Stamina",
+        "Timer", "Cooldown", "Ads", "Reward", "Unlock", "Cheat",
+        "License", "Billing", "Subscribe"
+    };
+    
+    // 1. Check for C# source files (Mono)
     QString srcDir = m_ProjectPath + "/csharp_src";
     if (QDir(srcDir).exists()) {
         QDirIterator it(srcDir, {"*.cs"}, QDir::Files, QDirIterator::Subdirectories);
-        QStringList interestingPatterns = {"Player", "Health", "Money", "Coin", "Gem", "Diamond", 
-                                           "Energy", "Score", "Purchase", "IAP", "Store", "Premium",
-                                           "VIP", "Inventory", "Item", "Weapon", "Damage", "Speed"};
         int filesRead = 0;
         
         while (it.hasNext() && context.length() < maxContextSize && filesRead < 30) {
@@ -1679,7 +1729,7 @@ QString GameModStudio::collectGameContext()
         }
     }
     
-    // Check for IL2CPP dump
+    // 2. Check for IL2CPP dump
     QString dumpFile = m_ProjectPath + "/dump/dump.cs";
     if (context.isEmpty() && QFile::exists(dumpFile)) {
         QFile file(dumpFile);
@@ -1687,6 +1737,113 @@ QString GameModStudio::collectGameContext()
             QString content = QString::fromUtf8(file.readAll());
             file.close();
             context = content.left(maxContextSize);
+        }
+    }
+    
+    // 3. Fallback: Analyze Smali code for Native Android apps
+    if (context.isEmpty()) {
+        QDir smaliDir(m_ProjectPath + "/smali");
+        QDirIterator it(m_ProjectPath, {"*.smali"}, QDir::Files, QDirIterator::Subdirectories);
+        int filesRead = 0;
+        
+        // Smali patterns to look for
+        QStringList smaliPatterns = {
+            "isPremium", "isProUser", "isPurchased", "isSubscribed", "hasLicense",
+            "getCoin", "getGem", "getGold", "getMoney", "getEnergy",
+            "addCoin", "addGem", "addGold", "spendCoin", "spendGem",
+            "setHealth", "getHealth", "takeDamage", "setDamage",
+            "LicenseChecker", "BillingClient", "InAppPurchase",
+            "isPro", "isVIP", "hasPurchased", "checkLicense"
+        };
+        
+        while (it.hasNext() && context.length() < maxContextSize && filesRead < 50) {
+            QString filePath = it.next();
+            QString relativePath = filePath.mid(m_ProjectPath.length() + 1);
+            
+            // Skip framework and Android system classes
+            if (relativePath.contains("/android/") || relativePath.contains("/androidx/") ||
+                relativePath.contains("/google/") || relativePath.contains("/com/android/")) {
+                continue;
+            }
+            
+            QFile file(filePath);
+            if (file.open(QIODevice::ReadOnly)) {
+                QString content = QString::fromUtf8(file.readAll());
+                file.close();
+                
+                bool isInteresting = false;
+                for (const QString &pattern : smaliPatterns) {
+                    if (content.contains(pattern, Qt::CaseInsensitive)) {
+                        isInteresting = true;
+                        break;
+                    }
+                }
+                
+                if (isInteresting) {
+                    context += "\n--- " + relativePath + " ---\n";
+                    
+                    // Extract just the interesting methods
+                    QStringList lines = content.split('\n');
+                    bool inMethod = false;
+                    QString currentMethod;
+                    
+                    for (const QString &line : lines) {
+                        if (line.startsWith(".method")) {
+                            inMethod = true;
+                            currentMethod = line + "\n";
+                        } else if (line.startsWith(".end method")) {
+                            currentMethod += line + "\n";
+                            
+                            // Check if this method is interesting
+                            for (const QString &pattern : smaliPatterns) {
+                                if (currentMethod.contains(pattern, Qt::CaseInsensitive)) {
+                                    context += currentMethod + "\n";
+                                    break;
+                                }
+                            }
+                            inMethod = false;
+                            currentMethod.clear();
+                        } else if (inMethod) {
+                            currentMethod += line + "\n";
+                        }
+                    }
+                    filesRead++;
+                }
+            }
+        }
+        
+        if (!context.isEmpty()) {
+            context = "# Smali Code Analysis (Native Android)\n\n" + context;
+        }
+    }
+    
+    // 4. Check for SharedPreferences (useful for value modding)
+    QDir prefsDir(m_ProjectPath + "/shared_prefs");
+    if (prefsDir.exists() && context.length() < maxContextSize - 5000) {
+        QStringList xmlFiles = prefsDir.entryList({"*.xml"}, QDir::Files);
+        if (!xmlFiles.isEmpty()) {
+            context += "\n\n# SharedPreferences Data\n";
+            for (const QString &xmlFile : xmlFiles) {
+                QFile file(prefsDir.filePath(xmlFile));
+                if (file.open(QIODevice::ReadOnly)) {
+                    QString prefsContent = QString::fromUtf8(file.readAll());
+                    file.close();
+                    
+                    // Only include if it has interesting keys
+                    bool hasInterestingKeys = false;
+                    for (const QString &pattern : interestingPatterns) {
+                        if (prefsContent.contains(pattern, Qt::CaseInsensitive)) {
+                            hasInterestingKeys = true;
+                            break;
+                        }
+                    }
+                    
+                    if (hasInterestingKeys) {
+                        context += "\n--- " + xmlFile + " ---\n";
+                        context += prefsContent.left(2000) + "\n";
+                    }
+                }
+            }
         }
     }
     
@@ -2578,31 +2735,72 @@ GameValueEditorDialog::GameValueEditorDialog(const QString &projectPath, QWidget
 ModMenuCodeGenerator::ModMenuCodeGenerator(const QString &projectPath, QObject *parent)
     : QObject(parent), m_ProjectPath(projectPath)
 {
-    // Initialize field patterns for mod types
-    m_FieldPatterns["coins"] = "(coin|gold|money|cash|credit|currency|balance)";
-    m_FieldPatterns["gems"] = "(gem|diamond|ruby|crystal|jewel)";
-    m_FieldPatterns["energy"] = "(energy|stamina|power|fuel)";
-    m_FieldPatterns["health"] = "(health|hp|hitpoint|life)";
-    m_FieldPatterns["damage"] = "(damage|attack|atk|dmg)";
-    m_FieldPatterns["speed"] = "(speed|spd|velocity|movespeed)";
-    m_FieldPatterns["exp"] = "(experience|exp|xp)";
-    m_FieldPatterns["level"] = "(level|lvl)";
-    m_FieldPatterns["keys"] = "(key|ticket)";
-    m_FieldPatterns["stars"] = "(star|rating)";
-    m_FieldPatterns["hearts"] = "(heart|life|lives)";
-    m_FieldPatterns["vip"] = "(vip|premium|pro|subscriber)";
+    // Initialize field patterns for mod types - comprehensive coverage
+    // Patterns extracted from real Unity games (IL2CPP dump analysis)
+    m_FieldPatterns["coins"] = "(coin|gold|money|cash|credit|currency|balance|wallet|funds|token|_coin|<Coin>)";
+    m_FieldPatterns["gems"] = "(gem|diamond|ruby|crystal|jewel|sapphire|emerald|stone|_gem|<Gem>)";
+    m_FieldPatterns["energy"] = "(energy|stamina|power|fuel|ap|actionpoint|mana|mp|_energy|<Energy>)";
+    m_FieldPatterns["health"] = "(health|hp|hitpoint|life|currenthp|maxhp|lifepoint|_health|<Health>)";
+    m_FieldPatterns["damage"] = "(damage|attack|atk|dmg|attackpower|basedamage|weapondamage)";
+    m_FieldPatterns["damage_mult"] = "(damagemult|attackmult|dmgmult|critdamage|bonusdamage)";
+    m_FieldPatterns["speed"] = "(speed|spd|velocity|movespeed|movementspeed|runspeed)";
+    m_FieldPatterns["defense"] = "(defense|def|armor|shield|protection|resistance)";
+    m_FieldPatterns["exp"] = "(experience|exp|xp|experiencepoint|totalxp|levelxp|<XP>)";
+    m_FieldPatterns["exp_mult"] = "(expmult|xpmult|experiencemult|bonusexp)";
+    m_FieldPatterns["level"] = "(level|lvl|playerlevel|characterlevel|metalevel|<Level>)";
+    m_FieldPatterns["keys"] = "(key|ticket|pass|voucher|token)";
+    m_FieldPatterns["tickets"] = "(ticket|spin|roll|gacha|summon|pull|jackpot)";
+    m_FieldPatterns["tokens"] = "(token|medal|badge|point|currency)";
+    m_FieldPatterns["stars"] = "(star|rating|score|point|achievement)";
+    m_FieldPatterns["hearts"] = "(heart|life|lives|remaining|continue|moves|turns)";
+    m_FieldPatterns["vip"] = "(vip|premium|pro|subscriber|elite|member|seasonpass|goldpass)";
+    m_FieldPatterns["attack_speed"] = "(attackspeed|atkspd|aspd|firerate|cooldown)";
+    m_FieldPatterns["critical"] = "(critical|crit|critrate|critchance|critdamage)";
+    m_FieldPatterns["dodge"] = "(dodge|evasion|evade|miss|avoid)";
+    m_FieldPatterns["inventory_max"] = "(stack|maxstack|capacity|slotsize|bagsize|quantity|amount)";
+    m_FieldPatterns["score_mult"] = "(scoremult|pointmult|bonusscore|multiplier)";
     
-    // Initialize method patterns
-    m_MethodPatterns["coins"] = "(Add|Set|Grant|Give|Spend|Deduct)(Coin|Gold|Money|Cash|Currency)";
-    m_MethodPatterns["gems"] = "(Add|Set|Grant|Give|Spend|Deduct)(Gem|Diamond|Crystal)";
-    m_MethodPatterns["energy"] = "(Add|Set|Consume|Spend|Refill)(Energy|Stamina|Power)";
-    m_MethodPatterns["health"] = "(Add|Set|Take|Deal|Heal)(Health|HP|Damage)";
-    m_MethodPatterns["damage"] = "(Add|Set|Deal|Calculate)(Damage|Attack)";
-    m_MethodPatterns["free_iap"] = "(Purchase|Buy|CanAfford|GetPrice|ProcessPurchase)";
-    m_MethodPatterns["unlock_items"] = "(Unlock|HasItem|IsUnlocked|CanAccess)";
-    m_MethodPatterns["no_ads"] = "(ShowAd|DisplayAd|LoadAd|IsAdReady)";
-    m_MethodPatterns["vip"] = "(Is|Get|Check)(Premium|VIP|Pro|Subscriber)";
-    m_MethodPatterns["no_cooldown"] = "(Get|Start|Check|Is)(Cooldown|Timer|Ready)";
+    // New patterns from MergePuzzle/Casual game analysis
+    m_FieldPatterns["booster"] = "(booster|powerup|helper|hint|shuffle|bomb|hammer|rocket)";
+    m_FieldPatterns["piggybank"] = "(piggybank|piggy|bonus|savings|accumulated)";
+    m_FieldPatterns["dailyreward"] = "(dailyreward|dailyprogress|checkprogress|volatilereward)";
+    m_FieldPatterns["unlimitedenergy"] = "(unlimitedenergy|infiniteenergy|freeenergy|unlimitedduration)";
+    m_FieldPatterns["noads"] = "(noads|adfree|removeads|seenfirstad)";
+    m_FieldPatterns["reward"] = "(reward|activeReward|pendingReward|waitingReward|rewardEntity)";
+    
+    // Initialize method patterns - expanded for better detection
+    m_MethodPatterns["coins"] = "(Add|Set|Grant|Give|Spend|Deduct|Remove|Use|Change)(Coin|Gold|Money|Cash|Currency|Credit)";
+    m_MethodPatterns["gems"] = "(Add|Set|Grant|Give|Spend|Deduct|Remove|Use|Change)(Gem|Diamond|Crystal|Ruby|Jewel)";
+    m_MethodPatterns["energy"] = "(Add|Set|Consume|Spend|Refill|Use|Restore|Recharge|Change)(Energy|Stamina|Power|Mana|AP)";
+    m_MethodPatterns["health"] = "(Add|Set|Take|Deal|Heal|Restore|Damage|Hurt)(Health|HP|Life|Damage)";
+    m_MethodPatterns["damage"] = "(Add|Set|Deal|Calculate|Apply|Get)(Damage|Attack|Atk|Dmg)";
+    m_MethodPatterns["speed"] = "(Set|Get|Multiply|Boost)(Speed|Velocity|Movement)";
+    m_MethodPatterns["defense"] = "(Set|Get|Add|Calculate)(Defense|Armor|Shield|Protection)";
+    m_MethodPatterns["exp"] = "(Add|Set|Grant|Give|Gain|Earn|Process)(Experience|Exp|XP|XPUpdate)";
+    m_MethodPatterns["level"] = "(Set|Add|Level|GainLevel|LevelUp|ChangeMetaLevel|ProcessLevelUpdate)";
+    m_MethodPatterns["free_iap"] = "(Purchase|Buy|CanAfford|GetPrice|ProcessPurchase|OnPurchase|ValidatePurchase|BuyItem|AddPurchase)";
+    m_MethodPatterns["no_ads"] = "(Show|Display|Load|Request|Is|Enable|Disable|Activate)(Ad|Ads|Banner|Interstitial|Rewarded|NoAds)";
+    m_MethodPatterns["unlock_items"] = "(Unlock|HasItem|IsUnlocked|CanAccess|IsOwned|HasAccess|GrantItem|AddReward)";
+    m_MethodPatterns["unlock_chars"] = "(Unlock|IsUnlocked|HasCharacter|CanUse)(Character|Hero|Champion|Unit)";
+    m_MethodPatterns["unlock_levels"] = "(Unlock|IsUnlocked|CanPlay|HasAccess)(Level|Stage|Chapter|World|Map)";
+    m_MethodPatterns["unlock_skins"] = "(Unlock|IsUnlocked|HasSkin|Own)(Skin|Costume|Outfit|Appearance)";
+    m_MethodPatterns["unlock_weapons"] = "(Unlock|IsUnlocked|HasWeapon|Own)(Weapon|Gun|Sword|Item)";
+    m_MethodPatterns["unlock_pets"] = "(Unlock|IsUnlocked|HasPet|Own)(Pet|Companion|Familiar|Buddy)";
+    m_MethodPatterns["max_upgrades"] = "(Upgrade|IsMaxLevel|GetUpgradeLevel|MaxUpgrade)";
+    m_MethodPatterns["vip"] = "(Is|Get|Check|Has|Enable)(Premium|VIP|Pro|Subscriber|Elite|Member|SeasonPass|GoldPass)";
+    m_MethodPatterns["no_cooldown"] = "(Get|Start|Check|Is|Reset|Skip)(Cooldown|Timer|Ready|Waiting)";
+    m_MethodPatterns["freeze_time"] = "(Get|Set|Update|Tick)(Timer|Time|Countdown|Remaining)";
+    m_MethodPatterns["always_win"] = "(Check|Is|Set)(Win|Victory|Success|Complete)";
+    m_MethodPatterns["no_enemies"] = "(Spawn|Create|Generate|Is)(Enemy|Enemies|Monster|Mob)";
+    m_MethodPatterns["instant_kill"] = "(Take|Deal|Apply|Calculate)(Damage|Kill|Death)";
+    
+    // New method patterns from MergePuzzle/Casual game analysis
+    m_MethodPatterns["booster"] = "(Add|Use|Consume|Get|Set|Change)(Booster|PowerUp|Helper|Hint)";
+    m_MethodPatterns["unlimited_energy"] = "(Add|Get|Set|Is)Unlimited(Energy|Duration|Time)";
+    m_MethodPatterns["daily_reward"] = "(Claim|Get|Progress|Check)(Daily|Reward|Calendar|Jackpot)";
+    m_MethodPatterns["anti_cheat"] = "(Detect|Check|Verify|Validate|Is)(Cheat|Hack|Time|Tamper|Integrity)";
+    m_MethodPatterns["currency_generic"] = "(Change|Get|Set)(Currency|Balance|Amount|Quantity)";
+    m_MethodPatterns["active_rewards"] = "(Change|Add|Remove|Get)(ActiveReward|Reward|WaitingReward)";
 }
 
 bool ModMenuCodeGenerator::parseDumpCs()
@@ -2638,21 +2836,43 @@ bool ModMenuCodeGenerator::parseDumpCs()
     QRegularExpression fieldRegex("^\\s*(public|private|protected)?\\s*(static)?\\s*(readonly)?\\s*(int|float|double|long|bool|byte|short|string|Int32|Int64|Single|Double|Boolean|String)\\s+(\\w+)\\s*;\\s*//\\s*(0x[0-9A-Fa-f]+)");
     QRegularExpression methodRegex("^\\s*(public|private|protected)?\\s*(static)?\\s*(virtual|override)?\\s*(void|int|float|bool|string|\\w+)\\s+(\\w+)\\s*\\(([^)]*)\\)[^/]*//\\s*RVA:\\s*(0x[0-9A-Fa-f]+)");
     
-    // Class name patterns to prioritize
+    // Class name patterns to prioritize - expanded from real game analysis
     QStringList priorityPatterns = {
+        // Core data classes
         "PlayerData", "UserData", "GameData", "SaveData", "ProfileData",
+        "UserEntity", "BoardEntity", "MetaEntity", "GameEntity", "SessionEntity",
+        // Currency/Economy
         "CurrencyManager", "CoinManager", "GemManager", "WalletManager", "EconomyManager",
+        "Currency", "CurrencyDTO", "CurrencyService", "CurrencyHandler",
+        // Resources
+        "EnergyManager", "EnergyEntity", "StaminaManager", "ResourceManager",
+        "BoosterEntity", "BoosterManager", "BoosterDTO", "PowerUpManager",
+        // Player stats
         "HealthManager", "DamageManager", "CombatManager", "StatsManager",
-        "InventoryManager", "ItemManager", "ShopManager", "StoreManager",
-        "EnergyManager", "TimerManager", "CooldownManager",
-        "PlayerController", "PlayerStats", "GameManager"
+        "PlayerController", "PlayerStats", "GameManager", "MasterController",
+        // Inventory/Items
+        "InventoryManager", "InventoryEntity", "ItemManager", "ItemEntity",
+        "RewardEntity", "RewardManager", "ActiveReward",
+        // Shop/IAP
+        "ShopManager", "StoreManager", "ShopEntity", "PurchaseManager",
+        "IAPManager", "BillingManager", "PackageManager",
+        // Timers/Events
+        "TimerManager", "CooldownManager", "EventManager", "EventEntity",
+        "DailyRewardEntity", "SeasonPassEntity", "PiggyBankEntity",
+        // Unlock/Premium
+        "UnlockManager", "FeatureManager", "VIPManager", "PremiumManager",
+        "UnlimitedEnergyEntity", "SubscriptionManager"
     };
     
-    // Classes to skip
+    // Classes to skip - UI, animations, system classes
     QStringList skipPatterns = {
         "UI", "Animation", "Tween", "Renderer", "Shader", "Material", "Canvas",
         "Button", "Text", "Image", "Panel", "Scroll", "Layout", "Sprite",
-        "Particle", "Audio", "Sound", "Music", "Effect", "DOTween", "LeanTween"
+        "Particle", "Audio", "Sound", "Music", "Effect", "DOTween", "LeanTween",
+        "iTween", "UniRx", "Cysharp", "Firebase", "Analytics", "Tracking",
+        "Localization", "Translation", "EventLog", "Popup", "Modal", "Dialog",
+        "Tooltip", "HUD", "Label", "Icon", "Badge", "AsyncState", "StateMachine",
+        "Awaiter", "MethodBuilder"
     };
     
     int classCount = 0;
@@ -2873,9 +3093,123 @@ bool ModMenuCodeGenerator::generateProject(const QString &outputDir, const QList
     dir.mkpath("jni");
     dir.mkpath("jni/imgui");
     dir.mkpath("jni/imgui/backends");
-    dir.mkpath("jni/dobby/include");
+    dir.mkpath("jni/dobby");
     
     bool success = true;
+    
+    // Check for downloaded dependencies and copy them
+    QSettings settings;
+    QString imguiPath = settings.value("imgui_path").toString();
+    QString dobbyPath = settings.value("dobby_path").toString();
+    
+    // Also check default location
+    QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString defaultDepsDir = appDataDir + "/mod_deps";
+    
+    if (imguiPath.isEmpty() || !QFile::exists(imguiPath + "/imgui.h")) {
+        imguiPath = defaultDepsDir + "/imgui";
+    }
+    if (dobbyPath.isEmpty() || !QFile::exists(dobbyPath + "/dobby.h")) {
+        dobbyPath = defaultDepsDir + "/dobby";
+    }
+    
+    // Copy ImGui files if available
+    if (QFile::exists(imguiPath + "/imgui.h")) {
+        emit progressUpdated(67, "Copying ImGui dependencies...");
+        QDir imguiDir(imguiPath);
+        QStringList imguiFiles = imguiDir.entryList({"*.h", "*.cpp"}, QDir::Files);
+        for (const QString &file : imguiFiles) {
+            QFile::copy(imguiPath + "/" + file, outputDir + "/jni/imgui/" + file);
+        }
+        emit logMessage(QString("Copied %1 ImGui files").arg(imguiFiles.size()), "success");
+    } else {
+        emit logMessage("ImGui not found. Run 'Download Dependencies' first or download manually.", "warning");
+        
+        // Generate placeholder with download instructions
+        QFile imguiPlaceholder(outputDir + "/jni/imgui/DOWNLOAD_IMGUI.txt");
+        if (imguiPlaceholder.open(QIODevice::WriteOnly)) {
+            imguiPlaceholder.write(R"(IMGUI LIBRARY REQUIRED
+
+Download ImGui from: https://github.com/ocornut/imgui
+
+Required files to copy here:
+- imgui.h
+- imgui.cpp
+- imgui_demo.cpp
+- imgui_draw.cpp
+- imgui_tables.cpp
+- imgui_widgets.cpp
+- imgui_internal.h
+- imconfig.h
+- imstb_rectpack.h
+- imstb_textedit.h
+- imstb_truetype.h
+
+Also copy from backends/ folder:
+- imgui_impl_opengl3.h
+- imgui_impl_opengl3.cpp
+- imgui_impl_android.h
+- imgui_impl_android.cpp
+)");
+            imguiPlaceholder.close();
+        }
+    }
+    
+    // Copy Dobby files if available
+    if (QFile::exists(dobbyPath + "/dobby.h")) {
+        emit progressUpdated(68, "Copying Dobby dependencies...");
+        QFile::copy(dobbyPath + "/dobby.h", outputDir + "/jni/dobby/dobby.h");
+        
+        // Copy libdobby.a if exists
+        if (QFile::exists(dobbyPath + "/libdobby.a")) {
+            QFile::copy(dobbyPath + "/libdobby.a", outputDir + "/jni/dobby/libdobby.a");
+            emit logMessage("Copied Dobby header and library", "success");
+        } else {
+            emit logMessage("Copied Dobby header (libdobby.a needs to be built)", "info");
+        }
+    } else {
+        emit logMessage("Dobby not found. Run 'Download Dependencies' first.", "warning");
+        
+        // Generate placeholder Dobby header
+        QFile dobbyPlaceholder(outputDir + "/jni/dobby/dobby.h");
+        if (dobbyPlaceholder.open(QIODevice::WriteOnly)) {
+            dobbyPlaceholder.write(R"(/*
+ * Dobby - Inline Hooking Framework
+ * 
+ * PLACEHOLDER - Replace with real Dobby library!
+ * 
+ * Build from source:
+ *   git clone https://github.com/jmpews/Dobby.git
+ *   cd Dobby && mkdir build && cd build
+ *   cmake .. -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
+ *            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24
+ *   make
+ *   
+ * Then copy:
+ *   - include/dobby.h -> here
+ *   - libdobby.a -> here
+ */
+
+#ifndef DOBBY_H
+#define DOBBY_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+int DobbyHook(void *address, void *replace_func, void **origin_func);
+int DobbyDestroy(void *address);
+void *DobbySymbolResolver(const char *image_name, const char *symbol_name);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // DOBBY_H
+)");
+            dobbyPlaceholder.close();
+        }
+    }
     
     if (style.contains("Frida", Qt::CaseInsensitive)) {
         // Generate Frida script
@@ -2940,6 +3274,22 @@ bool ModMenuCodeGenerator::generateProject(const QString &outputDir, const QList
             buildSh.write(generateBuildSh().toUtf8());
             buildSh.close();
         }
+        
+        // Generate Windows build script
+        QFile buildBat(outputDir + "/build.bat");
+        if (buildBat.open(QIODevice::WriteOnly)) {
+            buildBat.write(generateBuildBat().toUtf8());
+            buildBat.close();
+        }
+    }
+    
+    // Generate smali loader
+    dir.mkpath("smali_inject/com/modmenu");
+    QFile smaliLoader(outputDir + "/smali_inject/com/modmenu/ModLoader.smali");
+    if (smaliLoader.open(QIODevice::WriteOnly)) {
+        smaliLoader.write(generateSmaliLoader().toUtf8());
+        smaliLoader.close();
+        emit logMessage("Generated smali loader for injection", "info");
     }
     
     emit progressUpdated(95, "Generating README...");
@@ -3515,6 +3865,133 @@ fi
 )";
 }
 
+QString ModMenuCodeGenerator::generateBuildBat()
+{
+    return R"(@echo off
+REM Mod Menu Build Script for Windows
+REM Generated by APK Studio
+
+echo ========================================
+echo   Mod Menu Build Script
+echo ========================================
+
+REM Check for NDK
+if not defined ANDROID_NDK_HOME (
+    if not defined NDK_ROOT (
+        REM Try common locations
+        if exist "%LOCALAPPDATA%\Android\Sdk\ndk" (
+            for /d %%i in ("%LOCALAPPDATA%\Android\Sdk\ndk\*") do set NDK_ROOT=%%i
+        )
+    )
+)
+
+if not defined NDK_ROOT set NDK_ROOT=%ANDROID_NDK_HOME%
+
+if not exist "%NDK_ROOT%\ndk-build.cmd" (
+    echo ERROR: Android NDK not found!
+    echo.
+    echo Please set ANDROID_NDK_HOME environment variable:
+    echo   set ANDROID_NDK_HOME=C:\path\to\android-ndk
+    echo.
+    echo Or download NDK from:
+    echo   https://developer.android.com/ndk/downloads
+    exit /b 1
+)
+
+echo Using NDK: %NDK_ROOT%
+echo.
+echo Building mod menu...
+echo.
+
+cd jni
+call "%NDK_ROOT%\ndk-build.cmd" clean
+call "%NDK_ROOT%\ndk-build.cmd"
+
+if %ERRORLEVEL% == 0 (
+    echo.
+    echo ========================================
+    echo   BUILD SUCCESSFUL!
+    echo ========================================
+    echo.
+    echo Output: libs\arm64-v8a\libmodmenu.so
+    echo.
+    echo Next steps:
+    echo   1. Copy libmodmenu.so to APK's lib\arm64-v8a\ folder
+    echo   2. Add smali loader or modify manifest
+    echo   3. Repackage and sign the APK
+    echo.
+) else (
+    echo BUILD FAILED!
+    exit /b 1
+)
+
+pause
+)";
+}
+
+QString ModMenuCodeGenerator::generateSmaliLoader()
+{
+    return R"(.class public Lcom/modmenu/ModLoader;
+.super Ljava/lang/Object;
+.source "ModLoader.java"
+
+# ============================================================================
+# ModLoader - Loads the mod menu native library
+# 
+# USAGE: Add to main Activity's onCreate or static initializer
+#   invoke-static {}, Lcom/modmenu/ModLoader;->load()V
+# ============================================================================
+
+.field private static loaded:Z
+
+.method static constructor <clinit>()V
+    .registers 1
+    const/4 v0, 0x0
+    sput-boolean v0, Lcom/modmenu/ModLoader;->loaded:Z
+    return-void
+.end method
+
+.method public static load()V
+    .registers 3
+    
+    sget-boolean v0, Lcom/modmenu/ModLoader;->loaded:Z
+    if-nez v0, :already_loaded
+    
+    :try_start
+    const-string v0, "modmenu"
+    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
+    
+    const/4 v0, 0x1
+    sput-boolean v0, Lcom/modmenu/ModLoader;->loaded:Z
+    
+    const-string v0, "ModMenu"
+    const-string v1, "Mod menu loaded successfully!"
+    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+    :try_end
+    .catch Ljava/lang/UnsatisfiedLinkError; {:try_start .. :try_end} :catch_error
+    .catch Ljava/lang/Exception; {:try_start .. :try_end} :catch_error
+    
+    goto :end
+    
+    :catch_error
+    move-exception v0
+    const-string v1, "ModMenu"
+    const-string v2, "Failed to load mod library"
+    invoke-static {v1, v2, v0}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I
+    
+    :already_loaded
+    :end
+    return-void
+.end method
+
+.method public static isLoaded()Z
+    .registers 1
+    sget-boolean v0, Lcom/modmenu/ModLoader;->loaded:Z
+    return v0
+.end method
+)";
+}
+
 QString ModMenuCodeGenerator::generateFridaScript(const QList<ModTarget> &targets)
 {
     QString script = R"(/*
@@ -3525,19 +4002,61 @@ QString ModMenuCodeGenerator::generateFridaScript(const QList<ModTarget> &target
  * frida -U -f <package_name> -l mod_menu.js
  */
 
+// ============ CONFIGURATION ============
+var CONFIG = {
+    enabled: true,
+    logCalls: true,
+    
+    // Toggle individual mods here
+)";
+    
+    // Add config toggles for each mod
+    for (const ModTarget &target : targets) {
+        QString varName = target.modId.replace("_", "");
+        script += QString("    %1: true,\n").arg(varName);
+    }
+    
+    script += R"(};
+
+// ============ UTILITY FUNCTIONS ============
+function readInt(addr) {
+    try { return Memory.readS32(addr); } catch(e) { return 0; }
+}
+
+function writeInt(addr, val) {
+    try { Memory.writeS32(addr, val); return true; } catch(e) { return false; }
+}
+
+function readFloat(addr) {
+    try { return Memory.readFloat(addr); } catch(e) { return 0.0; }
+}
+
+function writeFloat(addr, val) {
+    try { Memory.writeFloat(addr, val); return true; } catch(e) { return false; }
+}
+
+// Search for pattern in memory (useful for finding dynamic addresses)
+function findPattern(module, pattern) {
+    var results = Memory.scanSync(module.base, module.size, pattern);
+    return results.length > 0 ? results[0].address : null;
+}
+
+// ============ MAIN HOOK LOGIC ============
 Java.perform(function() {
     console.log("[*] Frida Mod Menu Loaded!");
+    console.log("[*] Waiting for game libraries...");
     
     var il2cpp = Process.findModuleByName("libil2cpp.so");
     if (!il2cpp) {
         console.log("[!] libil2cpp.so not found, waiting...");
-        setTimeout(function() {
+        var checkInterval = setInterval(function() {
             il2cpp = Process.findModuleByName("libil2cpp.so");
             if (il2cpp) {
+                clearInterval(checkInterval);
                 console.log("[+] libil2cpp.so found at: " + il2cpp.base);
                 applyHooks(il2cpp.base);
             }
-        }, 3000);
+        }, 1000);
     } else {
         console.log("[+] libil2cpp.so found at: " + il2cpp.base);
         applyHooks(il2cpp.base);
@@ -3549,33 +4068,83 @@ function applyHooks(base) {
     
 )";
 
+    // Generate hooks for found targets
+    bool hasPlaceholders = false;
     for (const ModTarget &target : targets) {
-        if (target.rva.isEmpty()) continue;
-        
         QString funcName = modIdToFunctionName(target.modId);
+        QString varName = target.modId.replace("_", "");
+        
+        if (target.hookType == "placeholder" || target.rva.isEmpty()) {
+            hasPlaceholders = true;
+            // Generate placeholder template with search hints
+            script += QString(R"(    // ============ TODO: %1 ============
+    // Target not automatically found. Try these approaches:
+    // 1. Search game code for patterns like: %2
+    // 2. Use Memory.scanSync to find string references
+    // 3. Hook common Unity methods like PlayerPrefs.GetInt
+    /*
+    var pattern = "?? ?? ?? ?? 00 00 00 00"; // Replace with actual pattern
+    var match = findPattern(Process.findModuleByName("libil2cpp.so"), pattern);
+    if (match) {
+        Interceptor.attach(match, {
+            onEnter: function(args) {
+                if (CONFIG.%3) {
+                    console.log("[*] %1 triggered");
+                }
+            },
+            onLeave: function(retval) {
+                if (CONFIG.%3) {
+                    retval.replace(%4);
+                }
+            }
+        });
+    }
+    */
+    
+)").arg(target.displayName, target.modId, varName).arg(target.value);
+            continue;
+        }
         
         script += QString(R"(    // %1
-    var %2_addr = base.add(%3);
-    Interceptor.attach(%2_addr, {
-        onEnter: function(args) {
-            console.log("[*] %1 called");
-        },
-        onLeave: function(retval) {
-)").arg(target.displayName, funcName, target.rva);
+    try {
+        var %2_addr = base.add(%3);
+        Interceptor.attach(%2_addr, {
+            onEnter: function(args) {
+                if (CONFIG.logCalls) console.log("[*] %1 called");
+            },
+            onLeave: function(retval) {
+                if (!CONFIG.enabled || !CONFIG.%4) return;
+)").arg(target.displayName, funcName, target.rva, varName);
 
         if (target.fieldType == "int" || target.fieldType == "Int32") {
-            script += QString("            retval.replace(%1);  // Modified value\n").arg(target.value);
+            script += QString("                retval.replace(%1);  // Modified value\n").arg(target.value);
         } else if (target.fieldType == "bool" || target.fieldType == "Boolean") {
-            script += "            retval.replace(1);  // Always true\n";
+            script += "                retval.replace(1);  // Always true\n";
         } else if (target.fieldType == "float" || target.fieldType == "Single") {
-            script += QString("            retval.replace(%1.0);  // Modified value\n").arg(target.value);
+            script += QString("                retval.replace(%1.0);  // Modified value\n").arg(target.value);
+        } else {
+            script += "                // Unknown type - modify as needed\n";
         }
         
-        script += QString(R"(            console.log("[+] %1: value modified");
-        }
-    });
+        script += QString(R"(                console.log("[+] %1: value modified");
+            }
+        });
+        console.log("[+] Hooked: %1 @ %2");
+    } catch(e) {
+        console.log("[!] Failed to hook %1: " + e);
+    }
     
-)").arg(target.displayName);
+)").arg(target.displayName, target.rva);
+    }
+    
+    // Add placeholder warning if any
+    if (hasPlaceholders) {
+        script += R"(    // ============ PLACEHOLDERS DETECTED ============
+    // Some mods could not be automatically mapped to game code.
+    // Check the TODO sections above and fill in the addresses manually.
+    // Tip: Use Ghidra or IDA Pro to analyze libil2cpp.so
+    
+)";
     }
     
     script += R"(    console.log("[+] All hooks applied!");
@@ -3645,17 +4214,159 @@ This tool is for educational purposes only. Modifying games may violate ToS.
     return readme;
 }
 
+QString ModMenuCodeGenerator::generateHookCode(const ModTarget &target)
+{
+    QString code;
+    QString funcName = modIdToFunctionName(target.modId);
+    QString varName = modIdToVarName(target.modId);
+    
+    if (target.hookType == "placeholder") {
+        // Generate a template hook that needs manual completion
+        code = QString(R"(// TODO: %1 - Manual hook required
+// Target not automatically found. Search for patterns like: %2
+// Implement custom logic below:
+/*
+Interceptor.attach(base.add(0x??????), {
+    onEnter: function(args) {
+        console.log("[*] %1 called");
+    },
+    onLeave: function(retval) {
+        retval.replace(%3);
+    }
+});
+*/
+)").arg(target.displayName, target.modId).arg(target.value);
+        return code;
+    }
+    
+    if (target.hookType == "field_write") {
+        // Generate memory write code for field modification
+        code = QString(R"(// %1: Direct field modification
+// Class: %2, Field: %3, Offset: %4
+void Apply%5(void* instance) {
+    if (!instance || !Mod::%6) return;
+    
+    // Calculate field address
+    uintptr_t fieldAddr = (uintptr_t)instance + %4;
+    
+    // Write new value
+    *(int*)fieldAddr = %7;
+    LOGI("%1 applied: Set %3 to %7");
+}
+)").arg(target.displayName, target.targetClass, target.targetField, 
+        target.offset, funcName, varName).arg(target.value);
+    }
+    else if (target.hookType == "method_return") {
+        // Generate method hook that modifies return value
+        if (target.fieldType == "int" || target.fieldType == "Int32") {
+            code = QString(R"(// %1: Method return hook (int)
+int new_%2(void* __this) {
+    if (Mod::%3) {
+        LOGI("%1: Returning modified value %4");
+        return %4;
+    }
+    return old_%2(__this);
+}
+)").arg(target.displayName, funcName, varName).arg(target.value);
+        }
+        else if (target.fieldType == "float" || target.fieldType == "Single") {
+            code = QString(R"(// %1: Method return hook (float)
+float new_%2(void* __this) {
+    if (Mod::%3) {
+        LOGI("%1: Returning modified value %4.0f");
+        return %4.0f;
+    }
+    return old_%2(__this);
+}
+)").arg(target.displayName, funcName, varName).arg(target.value);
+        }
+        else if (target.fieldType == "bool" || target.fieldType == "Boolean") {
+            code = QString(R"(// %1: Method return hook (bool)
+bool new_%2(void* __this) {
+    if (Mod::%3) {
+        LOGI("%1: Returning true");
+        return true;
+    }
+    return old_%2(__this);
+}
+)").arg(target.displayName, funcName, varName);
+        }
+    }
+    else if (target.hookType == "method_replace") {
+        // Generate method hook that replaces entire method
+        code = QString(R"(// %1: Method replacement hook
+void new_%2(void* __this) {
+    if (Mod::%3) {
+        LOGI("%1: Skipping original method");
+        return; // Skip original logic
+    }
+    old_%2(__this);
+}
+)").arg(target.displayName, funcName, varName);
+    }
+    
+    return code;
+}
+
+QString ModMenuCodeGenerator::generateMenuToggle(const ModTarget &target)
+{
+    QString varName = modIdToVarName(target.modId);
+    QString category = "General";
+    
+    // Determine category based on mod ID
+    if (target.modId.contains("coin") || target.modId.contains("gem") || 
+        target.modId.contains("gold") || target.modId.contains("energy") ||
+        target.modId.contains("key") || target.modId.contains("star")) {
+        category = "Resources";
+    }
+    else if (target.modId.contains("health") || target.modId.contains("damage") ||
+             target.modId.contains("speed") || target.modId.contains("defense") ||
+             target.modId.contains("exp") || target.modId.contains("level")) {
+        category = "Player Stats";
+    }
+    else if (target.modId.contains("unlock") || target.modId.contains("iap") ||
+             target.modId.contains("ad") || target.modId.contains("premium") ||
+             target.modId.contains("vip")) {
+        category = "Unlocks";
+    }
+    else if (target.modId.contains("cooldown") || target.modId.contains("time") ||
+             target.modId.contains("freeze") || target.modId.contains("no_")) {
+        category = "Game Tweaks";
+    }
+    
+    QString toggleCode = QString(R"(        // %1 [%2]
+        ImGui::Checkbox("%3", &Mod::%4);
+        if (Mod::%4) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.47f, 0.90f, 0.47f, 1.0f), "(Active)");
+        }
+)").arg(target.modId, category, target.displayName, varName);
+    
+    // Add value slider for non-toggle mods
+    if (target.value > 1 && target.hookType != "method_replace") {
+        QString valueVar = "val_" + target.modId;
+        toggleCode += QString(R"(        static int %1 = %2;
+        if (Mod::%3) {
+            ImGui::SliderInt("Value##%4", &%1, 1, 999999999);
+        }
+)").arg(valueVar).arg(target.value).arg(varName, target.modId);
+    }
+    
+    return toggleCode;
+}
+
 // =============================================================================
 // ModMenuProjectDialog Implementation
 // =============================================================================
 
 ModMenuProjectDialog::ModMenuProjectDialog(const QString &projectPath, const QList<ModOption> &mods, QWidget *parent)
-    : QDialog(parent), m_ProjectPath(projectPath), m_Mods(mods)
+    : QDialog(parent), m_ProjectPath(projectPath), m_Mods(mods), m_DownloadsRemaining(0)
 {
     setWindowTitle(tr("🎮 Mod Menu Project Generator"));
     setMinimumSize(1100, 750);
     
     m_Generator = new ModMenuCodeGenerator(projectPath, this);
+    m_NetworkManager = new QNetworkAccessManager(this);
     
     connect(m_Generator, &ModMenuCodeGenerator::progressUpdated, this, [this](int percent, const QString &status) {
         m_Progress->setValue(percent);
@@ -3666,6 +4377,8 @@ ModMenuProjectDialog::ModMenuProjectDialog(const QString &projectPath, const QLi
         QString color = type == "error" ? "#f85149" : type == "success" ? "#7ee787" : type == "warning" ? "#d29922" : "#8b949e";
         m_PreviewArea->append(QString("<span style='color: %1;'>%2</span>").arg(color, msg));
     });
+    
+    connect(m_NetworkManager, &QNetworkAccessManager::finished, this, &ModMenuProjectDialog::onDownloadFinished);
     
     setupUI();
 }
@@ -3679,6 +4392,33 @@ void ModMenuProjectDialog::setupUI()
                                 "<p>Generates a ready-to-compile mod menu with all source files.</p>"));
     header->setStyleSheet("color: #c9d1d9;");
     mainLayout->addWidget(header);
+    
+    // Dependencies row
+    auto depsLayout = new QHBoxLayout();
+    
+    m_DownloadDepsBtn = new QPushButton(tr("📥 Download Dependencies (ImGui + Dobby)"));
+    m_DownloadDepsBtn->setStyleSheet("background: #1f6feb; color: white; padding: 10px 15px; font-weight: bold;");
+    m_DownloadDepsBtn->setToolTip(tr("Download ImGui and Dobby libraries automatically from GitHub"));
+    depsLayout->addWidget(m_DownloadDepsBtn);
+    
+    m_AutoDownloadCheck = new QCheckBox(tr("Auto-download with project"));
+    m_AutoDownloadCheck->setStyleSheet("color: #8b949e;");
+    m_AutoDownloadCheck->setChecked(true);
+    depsLayout->addWidget(m_AutoDownloadCheck);
+    
+    // Dependency status
+    auto depsStatusLabel = new QLabel();
+    if (checkDependencies()) {
+        depsStatusLabel->setText(tr("✅ Dependencies found"));
+        depsStatusLabel->setStyleSheet("color: #7ee787;");
+    } else {
+        depsStatusLabel->setText(tr("⚠️ Dependencies missing - click Download"));
+        depsStatusLabel->setStyleSheet("color: #d29922;");
+    }
+    depsLayout->addWidget(depsStatusLabel);
+    
+    depsLayout->addStretch();
+    mainLayout->addLayout(depsLayout);
     
     // Options row
     auto optionsLayout = new QHBoxLayout();
@@ -3762,6 +4502,7 @@ void ModMenuProjectDialog::setupUI()
     connect(m_FilesList, &QListWidget::currentRowChanged, this, &ModMenuProjectDialog::onPreviewFile);
     connect(m_SaveBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onSaveProject);
     connect(m_OpenFolderBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onOpenFolder);
+    connect(m_DownloadDepsBtn, &QPushButton::clicked, this, &ModMenuProjectDialog::onDownloadDependencies);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
 }
 
@@ -3866,4 +4607,158 @@ void ModMenuProjectDialog::updatePreview(const QString &fileName, const QString 
 {
     Q_UNUSED(fileName);
     m_PreviewArea->setPlainText(content);
+}
+
+bool ModMenuProjectDialog::checkDependencies()
+{
+    // Check if ImGui and Dobby are available in common locations
+    QSettings settings;
+    QString imguiPath = settings.value("imgui_path").toString();
+    QString dobbyPath = settings.value("dobby_path").toString();
+    
+    if (!imguiPath.isEmpty() && QFile::exists(imguiPath + "/imgui.h")) {
+        if (!dobbyPath.isEmpty() && QFile::exists(dobbyPath + "/dobby.h")) {
+            return true;
+        }
+    }
+    
+    // Check in app data directory
+    QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString depsDir = appDataDir + "/mod_deps";
+    
+    if (QFile::exists(depsDir + "/imgui/imgui.h") && QFile::exists(depsDir + "/dobby/dobby.h")) {
+        return true;
+    }
+    
+    return false;
+}
+
+void ModMenuProjectDialog::onDownloadDependencies()
+{
+    m_DownloadDepsBtn->setEnabled(false);
+    m_DownloadDepsBtn->setText(tr("⏳ Downloading..."));
+    m_PreviewArea->clear();
+    m_PreviewArea->append("<span style='color: #58a6ff;'>Starting dependency download...</span>");
+    
+    // Create deps directory
+    QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString depsDir = appDataDir + "/mod_deps";
+    QDir().mkpath(depsDir);
+    QDir().mkpath(depsDir + "/imgui");
+    QDir().mkpath(depsDir + "/dobby");
+    
+    m_DownloadsRemaining = 0;
+    
+    // ImGui files to download (from GitHub raw)
+    QStringList imguiFiles = {
+        "imgui.h", "imgui.cpp", "imgui_demo.cpp", "imgui_draw.cpp",
+        "imgui_tables.cpp", "imgui_widgets.cpp", "imgui_internal.h",
+        "imconfig.h", "imstb_rectpack.h", "imstb_textedit.h", "imstb_truetype.h"
+    };
+    
+    QString imguiBaseUrl = "https://raw.githubusercontent.com/ocornut/imgui/master/";
+    
+    for (const QString &file : imguiFiles) {
+        QString url = imguiBaseUrl + file;
+        QString destPath = depsDir + "/imgui/" + file;
+        downloadFile(url, destPath, "ImGui: " + file);
+    }
+    
+    // ImGui backends
+    QStringList imguiBackends = {
+        "backends/imgui_impl_opengl3.h", "backends/imgui_impl_opengl3.cpp",
+        "backends/imgui_impl_android.h", "backends/imgui_impl_android.cpp"
+    };
+    
+    for (const QString &file : imguiBackends) {
+        QString url = imguiBaseUrl + file;
+        QString fileName = QFileInfo(file).fileName();
+        QString destPath = depsDir + "/imgui/" + fileName;
+        downloadFile(url, destPath, "ImGui Backend: " + fileName);
+    }
+    
+    // Dobby header (we'll need to build libdobby.a separately)
+    QString dobbyUrl = "https://raw.githubusercontent.com/jmpews/Dobby/master/include/dobby.h";
+    downloadFile(dobbyUrl, depsDir + "/dobby/dobby.h", "Dobby: dobby.h");
+    
+    // Download pre-built Dobby if available (from releases)
+    // Note: Users may need to build Dobby themselves for their specific NDK version
+    m_PreviewArea->append("<span style='color: #d29922;'>⚠️ Note: Dobby library (libdobby.a) needs to be built from source.</span>");
+    m_PreviewArea->append("<span style='color: #8b949e;'>See: https://github.com/jmpews/Dobby#build</span>");
+}
+
+void ModMenuProjectDialog::downloadFile(const QString &url, const QString &destPath, const QString &description)
+{
+    QNetworkRequest request;
+    request.setUrl(QUrl(url));
+    request.setRawHeader("User-Agent", "APKStudio/1.0");
+    
+    QNetworkReply *reply = m_NetworkManager->get(request);
+    m_PendingDownloads[reply] = qMakePair(destPath, description);
+    m_DownloadsRemaining++;
+    
+    m_PreviewArea->append(QString("<span style='color: #8b949e;'>⬇️ Downloading: %1</span>").arg(description));
+}
+
+void ModMenuProjectDialog::onDownloadFinished(QNetworkReply *reply)
+{
+    if (!m_PendingDownloads.contains(reply)) {
+        reply->deleteLater();
+        return;
+    }
+    
+    QString destPath = m_PendingDownloads[reply].first;
+    QString description = m_PendingDownloads[reply].second;
+    m_PendingDownloads.remove(reply);
+    m_DownloadsRemaining--;
+    
+    if (reply->error() == QNetworkReply::NoError) {
+        QByteArray data = reply->readAll();
+        
+        QFile file(destPath);
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(data);
+            file.close();
+            m_PreviewArea->append(QString("<span style='color: #7ee787;'>✅ %1 (%2 bytes)</span>")
+                .arg(description).arg(data.size()));
+        } else {
+            m_PreviewArea->append(QString("<span style='color: #f85149;'>❌ Failed to save: %1</span>").arg(description));
+        }
+    } else {
+        m_PreviewArea->append(QString("<span style='color: #f85149;'>❌ Download failed: %1 - %2</span>")
+            .arg(description, reply->errorString()));
+    }
+    
+    reply->deleteLater();
+    
+    // Check if all downloads complete
+    if (m_DownloadsRemaining <= 0) {
+        m_DownloadDepsBtn->setEnabled(true);
+        m_DownloadDepsBtn->setText(tr("📥 Download Dependencies (ImGui + Dobby)"));
+        
+        // Save paths to settings
+        QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        QString depsDir = appDataDir + "/mod_deps";
+        
+        QSettings settings;
+        settings.setValue("imgui_path", depsDir + "/imgui");
+        settings.setValue("dobby_path", depsDir + "/dobby");
+        
+        m_PreviewArea->append("<br><span style='color: #7ee787; font-weight: bold;'>✅ All dependencies downloaded!</span>");
+        m_PreviewArea->append(QString("<span style='color: #8b949e;'>Location: %1</span>").arg(depsDir));
+        m_PreviewArea->append("<br><span style='color: #58a6ff;'>📝 To build Dobby (libdobby.a):</span>");
+        m_PreviewArea->append("<span style='color: #c9d1d9;'>1. git clone https://github.com/jmpews/Dobby.git</span>");
+        m_PreviewArea->append("<span style='color: #c9d1d9;'>2. cd Dobby && mkdir build && cd build</span>");
+        m_PreviewArea->append("<span style='color: #c9d1d9;'>3. cmake .. -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a</span>");
+        m_PreviewArea->append("<span style='color: #c9d1d9;'>4. make</span>");
+        m_PreviewArea->append(QString("<span style='color: #c9d1d9;'>5. Copy libdobby.a to: %1/dobby/</span>").arg(depsDir));
+    }
+}
+
+void ModMenuProjectDialog::extractZip(const QString &zipPath, const QString &destDir)
+{
+    // Simple unzip using Qt's QZipReader if available, or shell command
+    // For now, we download individual files instead of zips
+    Q_UNUSED(zipPath);
+    Q_UNUSED(destDir);
 }

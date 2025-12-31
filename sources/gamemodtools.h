@@ -277,6 +277,8 @@ private:
     QString generateAndroidMk();
     QString generateApplicationMk();
     QString generateBuildSh();
+    QString generateBuildBat();
+    QString generateSmaliLoader();
     QString generateFridaScript(const QList<ModTarget> &targets);
     QString generateReadme(const QList<ModTarget> &targets);
     
@@ -305,10 +307,15 @@ private slots:
     void onPreviewFile(int index);
     void onSaveProject();
     void onOpenFolder();
+    void onDownloadDependencies();
+    void onDownloadFinished(QNetworkReply *reply);
 
 private:
     void setupUI();
     void updatePreview(const QString &fileName, const QString &content);
+    void downloadFile(const QString &url, const QString &destPath, const QString &description);
+    void extractZip(const QString &zipPath, const QString &destDir);
+    bool checkDependencies();
     
     QString m_ProjectPath;
     QList<ModOption> m_Mods;
@@ -323,9 +330,14 @@ private:
     QPushButton *m_GenerateBtn;
     QPushButton *m_SaveBtn;
     QPushButton *m_OpenFolderBtn;
+    QPushButton *m_DownloadDepsBtn;
+    QCheckBox *m_AutoDownloadCheck;
     
     QMap<QString, QString> m_GeneratedFiles;
     QString m_OutputDir;
+    QNetworkAccessManager *m_NetworkManager;
+    QMap<QNetworkReply*, QPair<QString, QString>> m_PendingDownloads; // reply -> (destPath, description)
+    int m_DownloadsRemaining;
 };
 
 #endif // GAMEMODTOOLS_H
